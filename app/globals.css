@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-canvas font-sans text-ink antialiased;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+h1, h2, h3 {
+  @apply font-display;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+:focus-visible {
+  outline: 2px solid #2b59c3;
+  outline-offset: 2px;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary { @apply btn bg-wire text-white hover:bg-wire-dark; }
+  .btn-quiet { @apply btn border border-line bg-paper text-ink hover:border-ink-faint; }
+  .btn-danger { @apply btn border border-bad/30 bg-paper text-bad hover:bg-bad-tint; }
+  .input {
+    @apply w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-wire focus:outline-none focus:ring-2 focus:ring-wire/20;
+  }
+  .label { @apply mb-1 block text-sm font-medium text-ink; }
+  .panel { @apply rounded-xl border border-line bg-paper; }
+  .muted { @apply text-ink-soft; }
+}
+
+/* blueprint grid used on the builder canvas and hero */
+.grid-bg {
+  background-color: #eef1f6;
+  background-image: radial-gradient(#c7d0e0 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* live signal travelling along a wire */
+@keyframes signal {
+  from { stroke-dashoffset: 120; }
+  to { stroke-dashoffset: 0; }
+}
+.wire-live {
+  stroke-dasharray: 10 110;
+  animation: signal 2.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wire-live { animation: none; stroke-dasharray: none; opacity: 0; }
+}
+
+/* React Flow tweaks */
+.react-flow__handle {
+  width: 12px !important;
+  height: 12px !important;
+  background: #fff !important;
+  border: 2px solid #2b59c3 !important;
+}
+.react-flow__edge-path { stroke: #2b59c3; stroke-width: 2; }
+.react-flow__edge.selected .react-flow__edge-path { stroke: #f2b705; }
+.react-flow__attribution { display: none; }

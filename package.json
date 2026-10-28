@@ -1,0 +1,52 @@
+{
+  "name": "flowforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FlowForge — visual workflow automation SaaS with AI agents, credits billing (Stripe + Razorpay) and an MCP endpoint.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "worker": "tsx worker/index.ts",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "test": "DATABASE_URL=pglite://memory ENCRYPTION_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa tsx --test tests/*.test.ts",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.13",
+    "@xyflow/react": "^12.3.6",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.34.0",
+    "clsx": "^2.1.1",
+    "cron-parser": "^4.9.0",
+    "drizzle-orm": "^0.45.4",
+    "ioredis": "^5.4.2",
+    "jose": "^5.9.6",
+    "lucide-react": "^0.468.0",
+    "next": "14.2.35",
+    "nodemailer": "^6.9.16",
+    "postgres": "^3.4.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "stripe": "^17.5.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.10.2",
+    "@types/nodemailer": "^6.4.17",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.4.20",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.35",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
