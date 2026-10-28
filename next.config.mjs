@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
+    instrumentationHook: true,
     serverComponentsExternalPackages: ["@electric-sql/pglite", "bullmq", "ioredis", "nodemailer"],
   },
 };

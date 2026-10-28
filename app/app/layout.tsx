@@ -3,13 +3,11 @@ import { requireCtx } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { creditsRemaining, ensureCreditWindow } from "@/lib/credits";
 import { Sidebar } from "@/components/app/Sidebar";
-import { startInlineScheduler } from "@/lib/engine/scheduler";
 
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireCtx();
-  if (!process.env.REDIS_URL) startInlineScheduler(); // single-server mode: web process fires schedules
   const org = await ensureCreditWindow(ctx.org);
   const orgs = await db
     .select({ id: schema.orgs.id, name: schema.orgs.name })

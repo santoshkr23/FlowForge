@@ -13,7 +13,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "test": "DATABASE_URL=pglite://memory ENCRYPTION_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa tsx --test tests/*.test.ts",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "start:prod": "tsx scripts/migrate.ts && next start"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.13",
@@ -32,7 +33,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "stripe": "^17.5.0",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -46,7 +48,6 @@
     "eslint-config-next": "14.2.35",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }

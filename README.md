@@ -40,6 +40,21 @@ Open http://localhost:3000, sign up with your `ADMIN_EMAILS` address, and you'll
 
 Without `REDIS_URL`, the web server runs workflows and schedules itself — fine for development and small launches.
 
+## Deploy in 10 minutes (Railway)
+
+1. railway.com → **New project → Deploy from GitHub repo** → pick this repo.
+2. In the project, **+ New → Database → PostgreSQL**.
+3. On the app service → **Variables**, add:
+   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`
+   - `AUTH_SECRET`, `ENCRYPTION_KEY` = two different outputs of `openssl rand -hex 32`
+   - `ADMIN_EMAILS` = your email
+   - `APP_URL` = the public URL from step 4
+4. App service → **Settings → Networking → Generate domain**.
+
+`railway.json` already sets the build and start commands; the database is migrated on every start, and scheduled workflows run inside the web server until you add Redis + the worker.
+
+**Keep `ENCRYPTION_KEY` safe and never change it** — it decrypts your customers' saved app logins.
+
 ## Production
 
 1. **Postgres** — Neon, Supabase, Railway or RDS. Set `DATABASE_URL=postgresql://…` and run `npm run db:migrate`.
