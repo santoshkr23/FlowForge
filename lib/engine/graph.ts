@@ -3,8 +3,11 @@ import { CATALOG_BY_TYPE } from "./catalog";
 import { PLANS } from "../plans";
 import type { Graph, GraphNode, PlanId } from "@/db/schema";
 
+/** Core triggers ("trigger.*") and app watch triggers ("rss.watch", …) */
+export const isTriggerType = (type: string) => type.startsWith("trigger.") || !!CATALOG_BY_TYPE[type]?.trigger;
+
 export function findTrigger(g: Graph): GraphNode | undefined {
-  return g.nodes.find((n) => n.type.startsWith("trigger."));
+  return g.nodes.find((n) => isTriggerType(n.type));
 }
 
 export function childrenMap(g: Graph) {
@@ -24,7 +27,7 @@ export function validateGraph(g: Graph): string[] {
   const problems: string[] = [];
   if (!Array.isArray(g?.nodes) || !Array.isArray(g?.edges)) return ["Graph is malformed"];
   if (g.nodes.length > 200) problems.push("Workflows are limited to 200 steps");
-  const triggers = g.nodes.filter((n) => n.type.startsWith("trigger."));
+  const triggers = g.nodes.filter((n) => isTriggerType(n.type));
   if (triggers.length === 0) problems.push("Add a trigger (Run manually, Schedule or Webhook)");
   if (triggers.length > 1) problems.push("A workflow can only have one trigger");
   const ids = new Set(g.nodes.map((n) => n.id));
@@ -52,6 +55,10 @@ export function deriveTrigger(g: Graph, plan: PlanId): TriggerMeta {
   const t = findTrigger(g);
   if (!t) return { triggerType: "manual", intervalMin: null, cron: null };
   if (t.type === "trigger.webhook") return { triggerType: "webhook", intervalMin: null, cron: null };
+  if (CATALOG_BY_TYPE[t.type]?.poll) {
+    const every = Math.max(PLANS[plan].minIntervalMin, Math.round(Number(t.data?.config?.intervalMin) || 15));
+    return { triggerType: "schedule", intervalMin: every, cron: null };
+  }
   if (t.type === "trigger.schedule") {
     const c = t.data?.config ?? {};
     const min = PLANS[plan].minIntervalMin;

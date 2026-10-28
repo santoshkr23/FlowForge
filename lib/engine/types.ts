@@ -12,6 +12,8 @@ export type RunCtx = {
   raw: Record<string, unknown>;
   depth: number;
   connection: <T = Record<string, string>>(id: unknown) => Promise<T>;
+  /** access token for OAuth or token-paste connections (refreshed automatically) */
+  token: (id: unknown) => Promise<{ accessToken: string; data: Record<string, unknown> }>;
   runWorkflow: (workflowId: string, input: unknown) => Promise<unknown>;
   log: (msg: string) => void;
 };

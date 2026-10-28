@@ -1,7 +1,8 @@
 import { and, count, eq } from "drizzle-orm";
 import { db, schema } from "./db";
-import { deriveTrigger, nextRunAfter, validateGraph } from "./engine/graph";
+import { deriveTrigger, findTrigger, nextRunAfter, validateGraph } from "./engine/graph";
 import { PLANS } from "./plans";
+import { CATALOG_BY_TYPE } from "./engine/catalog";
 import { randomToken } from "./crypto";
 import { HttpError } from "./http";
 import type { Graph, Org } from "@/db/schema";
@@ -44,6 +45,10 @@ export async function saveWorkflow(org: Org, id: string, patch: { name?: string;
       throw new HttpError(422, (e as Error).message);
     }
     Object.assign(update, { graph: patch.graph, ...meta });
+    // a changed trigger (e.g. a different feed or store) starts watching from "now" again
+    const before = JSON.stringify(findTrigger(wf.graph) ? { t: findTrigger(wf.graph)!.type, c: findTrigger(wf.graph)!.data?.config } : null);
+    const after = JSON.stringify(findTrigger(patch.graph) ? { t: findTrigger(patch.graph)!.type, c: findTrigger(patch.graph)!.data?.config } : null);
+    if (before !== after) update.pollState = null;
     // an active workflow whose graph became invalid gets switched off
     const problems = validateGraph(patch.graph);
     if (wf.active && problems.length) update.active = false;
@@ -69,5 +74,11 @@ export async function setActive(org: Org, id: string, active: boolean) {
   }
   const nextRunAt = active && wf.triggerType === "schedule" ? nextRunAfter(wf) : null;
   const [saved] = await db.update(schema.workflows).set({ active, nextRunAt }).where(eq(schema.workflows.id, id)).returning();
+  // watch triggers: record "where things stand now" right away, so items arriving before the first check aren't missed
+  const t = findTrigger(saved.graph);
+  if (active && t && CATALOG_BY_TYPE[t.type]?.poll && !saved.pollState) {
+    const { checkWatch } = await import("./engine/scheduler");
+    await checkWatch(saved);
+  }
   return saved;
 }

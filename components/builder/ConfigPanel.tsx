@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { Copy, Trash2 } from "lucide-react";
 import { AppIcon } from "../AppIcon";
-import { APPS, CATALOG, CATALOG_BY_TYPE, type Field } from "@/lib/engine/catalog";
+import { APPS, CATALOG, CATALOG_BY_TYPE, connectionApps, type Field } from "@/lib/engine/catalog";
 import { PLANS, planAllows } from "@/lib/plans";
 import type { PlanId, StepLog } from "@/db/schema";
 import type { StepData } from "./StepNode";
@@ -116,7 +116,7 @@ export function ConfigPanel(props: {
           </label>
         );
       case "connection": {
-        const list = connections.filter((c) => c.app === f.app);
+        const list = connections.filter((c) => connectionApps(f).includes(c.app));
         return (
           <div className="flex gap-2">
             <select id={common.id} disabled={readOnly} className="input" value={String(value)} onChange={(e) => setField(f.key, e.target.value)}>
@@ -127,7 +127,7 @@ export function ConfigPanel(props: {
                 </option>
               ))}
             </select>
-            <Link href={`/app/connections?add=${f.app}`} target="_blank" className="btn-quiet shrink-0">
+            <Link href={`/app/connections?add=${connectionApps(f).slice(-1)[0]}`} target="_blank" className="btn-quiet shrink-0">
               Add
             </Link>
           </div>
@@ -195,11 +195,20 @@ export function ConfigPanel(props: {
               Trigger
             </label>
             <select id="trigger-type" className="input" value={data.moduleType} onChange={(e) => props.onChangeType(e.target.value)}>
-              {CATALOG.filter((m) => m.trigger).map((m) => (
-                <option key={m.type} value={m.type}>
-                  {m.name}
-                </option>
-              ))}
+              <optgroup label="Start">
+                {CATALOG.filter((m) => m.trigger && !m.poll).map((m) => (
+                  <option key={m.type} value={m.type}>
+                    {m.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Watch for something new">
+                {CATALOG.filter((m) => m.poll).map((m) => (
+                  <option key={m.type} value={m.type}>
+                    {m.name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
         )}
@@ -233,8 +242,8 @@ export function ConfigPanel(props: {
             </label>
             {control(f)}
             {f.help && <p className="mt-1 text-xs text-ink-faint">{f.help}</p>}
-            {f.type === "connection" && f.app && APPS[f.app] && !connections.some((c) => c.app === f.app) && (
-              <p className="mt-1 text-xs text-ink-faint">No {APPS[f.app].name} connection yet. Add one, then come back and pick it.</p>
+            {f.type === "connection" && APPS[connectionApps(f).slice(-1)[0]] && !connections.some((c) => connectionApps(f).includes(c.app)) && (
+              <p className="mt-1 text-xs text-ink-faint">No {APPS[connectionApps(f).slice(-1)[0]].name} connection yet. Add one, then come back and pick it.</p>
             )}
           </div>
         ))}

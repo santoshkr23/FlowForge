@@ -1,34 +1,10 @@
 import nodemailer from "nodemailer";
-import { SignJWT, importPKCS8 } from "jose";
 import { resolveJsonField } from "../template";
 import { apiCall, httpRequest } from "../net";
 import { StepError, type ModuleRunner } from "../types";
+import { googleAccess } from "./google";
 
 const s = (v: unknown) => (v == null ? "" : String(v));
-
-async function googleToken(serviceAccountJson: string, scope: string) {
-  let sa: { client_email: string; private_key: string };
-  try {
-    sa = JSON.parse(serviceAccountJson);
-  } catch {
-    throw new StepError("Google connection: service account JSON is invalid");
-  }
-  const key = await importPKCS8(sa.private_key, "RS256");
-  const now = Math.floor(Date.now() / 1000);
-  const assertion = await new SignJWT({ scope })
-    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
-    .setIssuer(sa.client_email)
-    .setAudience("https://oauth2.googleapis.com/token")
-    .setIssuedAt(now)
-    .setExpirationTime(now + 3600)
-    .sign(key);
-  const r = await apiCall<{ access_token: string }>("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }).toString(),
-  });
-  return r.access_token;
-}
 
 export const apps: Record<string, ModuleRunner> = {
   "email.send": async ({ config, connection }) => {
@@ -97,9 +73,8 @@ export const apps: Record<string, ModuleRunner> = {
     return { output: { sid: r.sid, status: r.status } };
   },
 
-  "sheets.append": async ({ config, raw, scope, connection }) => {
-    const c = await connection<{ serviceAccountJson: string }>(config.connectionId);
-    const token = await googleToken(c.serviceAccountJson, "https://www.googleapis.com/auth/spreadsheets");
+  "sheets.append": async ({ config, raw, scope, connection, token: tok }) => {
+    const token = await googleAccess({ connection, token: tok }, config.connectionId, "https://www.googleapis.com/auth/spreadsheets");
     const values = resolveJsonField(raw.values, scope);
     if (!Array.isArray(values)) throw new StepError("Row values must be a JSON array");
     const range = encodeURIComponent(s(config.range) || "Sheet1!A1");
@@ -110,9 +85,8 @@ export const apps: Record<string, ModuleRunner> = {
     return { output: { updatedRange: r.updates?.updatedRange } };
   },
 
-  "sheets.read": async ({ config, connection }) => {
-    const c = await connection<{ serviceAccountJson: string }>(config.connectionId);
-    const token = await googleToken(c.serviceAccountJson, "https://www.googleapis.com/auth/spreadsheets.readonly");
+  "sheets.read": async ({ config, connection, token: tok }) => {
+    const token = await googleAccess({ connection, token: tok }, config.connectionId, "https://www.googleapis.com/auth/spreadsheets.readonly");
     const range = encodeURIComponent(s(config.range) || "Sheet1!A1:Z100");
     const r = await apiCall<{ values?: string[][] }>(`https://sheets.googleapis.com/v4/spreadsheets/${s(config.spreadsheetId)}/values/${range}`, {
       headers: { authorization: `Bearer ${token}` },

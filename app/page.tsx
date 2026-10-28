@@ -5,7 +5,11 @@ import { PricingTable } from "@/components/marketing/PricingTable";
 import { AppIcon } from "@/components/AppIcon";
 import { CATALOG } from "@/lib/engine/catalog";
 
-const APP_TILES = Array.from(new Map(CATALOG.filter((m) => !m.trigger && !["flow", "data"].some((p) => m.type.startsWith(p))).map((m) => [m.app, m])).values());
+const APP_TILES = Array.from(
+  new Map(
+    CATALOG.filter((m) => !/^(trigger|flow|data|datastore|workflow|code|http)\./.test(m.type)).map((m) => [m.app, { ...m, label: m.name.split(":")[0].replace(" (Twitter)", "").replace(" Page", "").replace(" Business", "").replace("Microsoft ", "") }]),
+  ).values(),
+).sort((a, b) => a.label.localeCompare(b.label));
 
 const USES = [
   {
@@ -61,16 +65,16 @@ export default function Home() {
         <section id="apps" className="mx-auto max-w-6xl px-5 py-12">
           <div className="grid gap-10 lg:grid-cols-[1fr_1.4fr]">
             <div>
-              <h2 className="text-3xl font-bold">Your tools, already connected</h2>
+              <h2 className="text-3xl font-bold">{APP_TILES.length}+ apps, already connected</h2>
               <p className="mt-4 text-ink-soft">
-                Messaging, sheets, databases, payments and AI work out of the box. Anything else with an API is one HTTP step away, and a JavaScript step covers the odd case.
+                Social media, messaging, email, CRMs, stores, sheets, databases, payments and AI work out of the box. Anything else with an API is one HTTP step away, and a JavaScript step covers the odd case.
               </p>
             </div>
-            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
               {APP_TILES.map((m) => (
-                <li key={m.app} className="flex items-center gap-3 rounded-lg border border-line bg-paper px-3 py-2.5 text-sm">
-                  <AppIcon app={m.app} color={m.color} size={14} />
-                  {m.name.split(":")[0]}
+                <li key={m.app} className="flex items-center gap-2.5 rounded-lg border border-line bg-paper px-2.5 py-2 text-sm">
+                  <AppIcon app={m.app} color={m.color} size={12} />
+                  <span className="leading-tight">{m.label}</span>
                 </li>
               ))}
             </ul>

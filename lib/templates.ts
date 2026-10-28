@@ -12,6 +12,44 @@ const e = (s: string, t: string) => ({ id: `${s}->${t}`, source: s, target: t })
 
 export const TEMPLATES: Template[] = [
   {
+    id: "youtube-to-socials",
+    name: "New YouTube video → X, LinkedIn, Facebook & Bluesky",
+    description: "When your channel publishes a video, AI writes a short post and shares it everywhere at once.",
+    category: "Social media",
+    apps: ["youtube", "sparkles", "twitter", "linkedin", "facebook"],
+    graph: {
+      nodes: [
+        n("trigger", "youtube.watch", 40, 220, "New video", { channelId: "", intervalMin: 15 }),
+        n("write", "ai.prompt", 300, 220, "Write the post", {
+          system: "You write upbeat, specific social posts. No hashtags spam: at most 2. Under 240 characters.",
+          prompt: "Write a post announcing this new video. Title: {{trigger.title}}. Description: {{trigger.description}}",
+        }),
+        n("router", "flow.router", 560, 220, "Share everywhere"),
+        n("x", "x.post", 800, 40, "Post on X", { text: "{{steps.write.text}} {{trigger.link}}" }),
+        n("li", "linkedin.post", 800, 160, "Share on LinkedIn", { text: "{{steps.write.text}}", link: "{{trigger.link}}" }),
+        n("fb", "facebook.post", 800, 280, "Post to Page", { message: "{{steps.write.text}}", link: "{{trigger.link}}" }),
+        n("bsky", "bluesky.post", 800, 400, "Post on Bluesky", { text: "{{steps.write.text}}", link: "{{trigger.link}}" }),
+      ],
+      edges: [e("trigger", "write"), e("write", "router"), e("router", "x"), e("router", "li"), e("router", "fb"), e("router", "bsky")],
+    },
+  },
+  {
+    id: "blog-to-instagram",
+    name: "New blog post → Instagram + LinkedIn",
+    description: "Watch your blog's RSS feed; when a post goes live, share it on LinkedIn and post your cover image to Instagram.",
+    category: "Social media",
+    apps: ["rss", "sparkles", "instagram", "linkedin"],
+    graph: {
+      nodes: [
+        n("trigger", "rss.watch", 40, 160, "New blog post", { url: "https://yourblog.com/feed", intervalMin: 30 }),
+        n("caption", "ai.prompt", 300, 160, "Write caption", { prompt: "Write a friendly Instagram caption (max 3 short lines + 3 hashtags) for this article: {{trigger.title}} — {{trigger.summary}}" }),
+        n("ig", "instagram.post", 560, 60, "Post to Instagram", { kind: "photo", mediaUrl: "https://yourblog.com/cover.jpg", caption: "{{steps.caption.text}}" }),
+        n("li", "linkedin.post", 560, 260, "Share on LinkedIn", { text: "New on the blog: {{trigger.title}}", link: "{{trigger.link}}" }),
+      ],
+      edges: [e("trigger", "caption"), e("caption", "ig"), e("caption", "li")],
+    },
+  },
+  {
     id: "lead-to-sheet-slack",
     name: "New lead → Google Sheet + Slack alert",
     description: "Catch form submissions on a webhook, log them to a sheet and ping your sales channel.",

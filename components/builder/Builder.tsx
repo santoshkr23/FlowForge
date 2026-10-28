@@ -77,7 +77,7 @@ function Inner({ workflow, webhookUrl, connections, plan, readOnly, lastRun }: P
   const [run, setRun] = useState<Run | null>(lastRun ? { executionId: lastRun.id, status: lastRun.status, steps: lastRun.steps } : null);
   const trigger = nodes.find((n) => CATALOG_BY_TYPE[n.data.moduleType]?.trigger);
   const [testInput, setTestInput] = useState(() => {
-    const t = workflow.graph.nodes.find((n) => n.type.startsWith("trigger."));
+    const t = workflow.graph.nodes.find((n) => CATALOG_BY_TYPE[n.type]?.trigger);
     if (t?.type === "trigger.webhook") return '{\n  "body": { "name": "Test", "email": "test@example.com" }\n}';
     return String(t?.data?.config?.sample ?? "{}");
   });

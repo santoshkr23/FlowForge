@@ -10,8 +10,8 @@ A visual workflow-automation SaaS you can sell: customers sign up, draw workflow
 | Accounts | Email + password sign-up/sign-in, workspaces, switch between workspaces |
 | Builder | Drag-and-drop canvas, step palette, settings panel, click-to-insert data mapping, "Run once" with per-step input/output |
 | Engine | Branching (router + filters), iterator (loop over lists), sub-workflows, delays, variables, per-step "continue on error", 5-min step timeout, credit metering |
-| Triggers | Manual / API / MCP, schedule (interval or cron), webhook (instant 202 or wait and return a custom response) |
-| Apps (30 steps) | HTTP, JavaScript code, AI text (OpenAI or Claude), AI agent with tools, Email (SMTP), Slack, Discord, Telegram, Twilio SMS/WhatsApp, Google Sheets, Notion, Airtable, GitHub, Razorpay & Stripe payment links, data stores |
+| Triggers | Manual / API / MCP, schedule (interval or cron), webhook (instant 202 or wait and return a custom response), and **watch triggers**: new Gmail email, new YouTube video, new RSS item, new Google Sheets row, new Shopify / WooCommerce / Squarespace order, Twitch channel goes live |
+| Apps (60+) | **Social:** Instagram, Facebook Pages, X, LinkedIn, YouTube, Pinterest, Bluesky, Mastodon, Tumblr, Reddit, Twitch, VK, Discourse, Manychat · **Messaging:** WhatsApp Business, Slack, Discord, Telegram, Twilio, Teams · **Email:** Gmail, Outlook, SMTP, Mailchimp, Brevo, SendGrid · **CRM & support:** HubSpot, Zoho CRM, Pipedrive, Freshdesk, Zendesk · **Commerce:** Shopify, WooCommerce, Squarespace, WordPress · **Productivity:** Google Sheets/Drive/Calendar, Notion, Airtable, Trello, Asana, ClickUp, Todoist, Zoom, Dropbox · **Dev & data:** HTTP, JavaScript, GitHub, Jira, Linear, Supabase, PostgreSQL, RSS, Bitly · **Payments:** Razorpay, Stripe, Cashfree, Instamojo · **AI:** OpenAI/Claude text + agents |
 | AI | "Describe it" → AI drafts the workflow; agent step records every thought and tool call |
 | Observability | Dashboard, run history with filters and full-text search, step-by-step run logs |
 | Teams | Invites, roles (Owner / Admin / Builder / Viewer), seat limits per plan, activity (audit) log |
@@ -106,6 +106,37 @@ Tools exposed: `list_workflows`, `run_workflow`, `get_execution`.
 2. Add the runtime function in `lib/engine/modules/apps.ts` (same key as `type`).
 
 That's it — it appears in the builder palette, the landing page and the AI drafter automatically.
+
+## One-click app sign-in ("Connect with Google / Facebook / X …")
+
+Customers connect most apps by pasting a key. For the big platforms they expect a **Connect with …** button, and that button only works after **you** (the platform owner) register a free developer app with each provider. Until you do, the button is hidden and the app shows a short note instead.
+
+For every provider:
+- Set the redirect / callback URL to **`https://YOUR_DOMAIN/api/oauth/callback`** (exactly; one URL for all providers).
+- Put the keys in your host's environment as `<PROVIDER>_CLIENT_ID` and `<PROVIDER>_CLIENT_SECRET`, then redeploy.
+
+| Provider | Env prefix | Covers | Where to register | Review before the public can use it |
+|---|---|---|---|---|
+| Google | `GOOGLE_` | Gmail, Drive, Calendar, Sheets, YouTube | console.cloud.google.com → APIs & Services → enable Gmail, Drive, Calendar, Sheets, YouTube Data APIs → OAuth consent screen → Credentials → OAuth client (Web) | Yes. Gmail read access is a "restricted" scope (needs a security assessment); YouTube uploads stay *private* until Google audits the app. Up to 100 test users work immediately. |
+| Facebook / Instagram | `FACEBOOK_` | Facebook Pages, Instagram | developers.facebook.com → Create app (Business) → add Facebook Login for Business + Instagram Graph API | Yes, App Review for `pages_manage_posts`, `instagram_content_publish`, etc. Works for your own accounts (app roles) before review. |
+| X (Twitter) | `TWITTER_` | X posts | developer.x.com → Project → App → User authentication settings → OAuth 2.0, type "Web App", read+write | Free tier allows a limited number of posts per month; paid tiers raise it. |
+| LinkedIn | `LINKEDIN_` | LinkedIn posts | linkedin.com/developers → Create app → Products: "Sign In with LinkedIn using OpenID Connect" + "Share on LinkedIn" | Self-serve for personal posting. Company-page posting needs the Community Management API (application). Optional `LINKEDIN_VERSION` (YYYYMM). |
+| Microsoft | `MICROSOFT_` | Outlook, Teams | portal.azure.com → App registrations → New (any org + personal accounts) → Web redirect → Certificates & secrets | Publisher verification recommended; some organisations require admin consent. |
+| Pinterest | `PINTEREST_` | Pins | developers.pinterest.com → My apps → Connect app | Trial access first; request Standard access for public use. |
+| Zoho | `ZOHO_` | Zoho CRM | api-console.zoho.in → Server-based application. Set `ZOHO_ACCOUNTS_URL` for your data centre (default `https://accounts.zoho.in`). | No. |
+| Dropbox | `DROPBOX_` | Dropbox uploads | dropbox.com/developers → Create app (scoped, files.content.write) | Production approval after 50 users. |
+| Tumblr | `TUMBLR_` | Tumblr posts | tumblr.com/oauth/apps → Register application (OAuth2 redirect) | No. |
+
+Meta API version can be pinned with `META_GRAPH_VERSION` (default `v23.0`); Shopify with `SHOPIFY_API_VERSION` (default `2026-07`).
+
+### Apps that are not included (yet) and why
+- **TikTok** — posting needs TikTok's Content Posting API audit and a verified domain; unaudited apps can only post privately.
+- **Buffer, Metricool, Blotato, SocialBee, Vista Social, WoopSocial, ContentStudio** — no open public API for new developers, or only for partners. If a customer has API access, the HTTP request step can call it.
+- **Foursquare** — the Places API is changing hosts/versions; use the HTTP step with a key.
+- **Threads** — separate Meta OAuth app; planned.
+
+### Adding more apps
+Each app is a catalog entry in `lib/engine/catalog-apps.ts` plus a short function in `lib/engine/modules/*.ts` (watch triggers: `lib/engine/pollers.ts`). `tests/apps.test.ts` shows how to test one against a simulated API.
 
 ## Before a public launch — read this
 - **Code steps**: `code.javascript` uses Node's `vm` with a timeout. That is *not* a security boundary against a determined attacker. Before letting the public run code, swap it for [`isolated-vm`](https://github.com/laverdet/isolated-vm) or run code steps in a separate container — or keep it disabled by raising its `minPlan` to `ENTERPRISE`.

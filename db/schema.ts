@@ -82,6 +82,8 @@ export const workflows = pgTable(
     cron: text("cron"),
     nextRunAt: timestamp("next_run_at", { withTimezone: true }),
     webhookToken: text("webhook_token").unique(),
+    /** watch triggers: where we left off (last seen ids / timestamps) */
+    pollState: jsonb("poll_state").$type<Record<string, unknown>>(),
     createdById: text("created_by_id"),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

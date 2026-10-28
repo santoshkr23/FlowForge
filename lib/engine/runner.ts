@@ -1,18 +1,23 @@
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "../db";
-import { decryptJson } from "../crypto";
 import { chargeCredits, creditsRemaining, ensureCreditWindow } from "../credits";
 import { planAllows, PLANS } from "../plans";
-import { CATALOG_BY_TYPE } from "./catalog";
-import { childrenMap, findTrigger } from "./graph";
+import { CATALOG, CATALOG_BY_TYPE } from "./catalog";
+import { childrenMap, findTrigger, isTriggerType } from "./graph";
 import { resolveDeep, type Scope } from "./template";
 import { core } from "./modules/core";
 import { apps } from "./modules/apps";
 import { ai } from "./modules/ai";
+import { social } from "./modules/social";
+import { google } from "./modules/google";
+import { business } from "./modules/business";
+import { connectionHelpers } from "./connections";
 import { StepError, type ModuleResult, type ModuleRunner } from "./types";
 import type { GraphNode, StepLog, Workflow } from "@/db/schema";
 
-export const RUNNERS: Record<string, ModuleRunner> = { ...core, ...apps, ...ai };
+export const RUNNERS: Record<string, ModuleRunner> = { ...core, ...apps, ...ai, ...social, ...google, ...business };
+// watch triggers: their output is the item the poller handed to this run
+for (const m of CATALOG) if (m.trigger && !RUNNERS[m.type]) RUNNERS[m.type] = async ({ scope }) => ({ output: scope.trigger });
 
 const MAX_STEPS_PER_RUN = 2000;
 const STEP_TIMEOUT_MS = 330_000;
@@ -98,21 +103,7 @@ export async function runExecution(executionId: string, depth = 0): Promise<RunO
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   let stepCount = 0;
 
-  const connCache = new Map<string, unknown>();
-  const connection = async <T,>(id: unknown): Promise<T> => {
-    const key = String(id ?? "");
-    if (!key) throw new StepError("Pick a connection for this step");
-    if (!connCache.has(key)) {
-      const [c] = await db
-        .select()
-        .from(schema.connections)
-        .where(and(eq(schema.connections.id, key), eq(schema.connections.orgId, org.id)))
-        .limit(1);
-      if (!c) throw new StepError("Connection not found — it may have been deleted");
-      connCache.set(key, decryptJson(c.secret));
-    }
-    return connCache.get(key) as T;
-  };
+  const { connection, token } = connectionHelpers(org.id);
 
   const runSubWorkflow = async (workflowId: string, input: unknown) => {
     if (depth + 1 > MAX_DEPTH) throw new StepError("Sub-workflows can only be nested 3 levels deep");
@@ -166,6 +157,7 @@ export async function runExecution(executionId: string, depth = 0): Promise<RunO
           raw,
           depth,
           connection,
+          token,
           runWorkflow: runSubWorkflow,
           log: () => {},
         }),
@@ -181,7 +173,7 @@ export async function runExecution(executionId: string, depth = 0): Promise<RunO
       (scope.steps as Record<string, unknown>)[node.id] = result.output ?? null;
       log.output = clipForLog(result.output);
       log.durationMs = Date.now() - startedAt.getTime();
-      if (result.output !== undefined && !node.type.startsWith("trigger.")) lastOutput = result.output;
+      if (result.output !== undefined && !isTriggerType(node.type)) lastOutput = result.output;
       if (result.respond) respond = result.respond;
       ownWorkDone = true;
 

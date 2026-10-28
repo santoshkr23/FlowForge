@@ -22,6 +22,15 @@ function isPrivate(ip: string): boolean {
   );
 }
 
+/** Throws unless the hostname resolves only to public addresses. */
+export async function assertPublicHost(hostname: string) {
+  if (process.env.ALLOW_PRIVATE_NETWORK === "1") return;
+  const host = hostname.replace(/^\[|\]$/g, "");
+  const addrs = isIP(host) ? [{ address: host }] : await lookup(host, { all: true }).catch(() => []);
+  if (!addrs.length) throw new StepError(`Could not resolve ${host}`);
+  if (addrs.some((a) => isPrivate(a.address))) throw new StepError("Connections to private network addresses are blocked");
+}
+
 export async function assertPublicUrl(raw: string) {
   let url: URL;
   try {
@@ -99,4 +108,52 @@ export async function apiCall<T = unknown>(url: string, init: RequestInit & { js
     throw new StepError(`${res.status} ${msg}`);
   }
   return data as T;
+}
+
+/** Download a public file (SSRF-checked) with a size cap. */
+export async function downloadFile(url: string, maxBytes = 256 * 1024 * 1024): Promise<{ data: Buffer; contentType: string; name: string }> {
+  await assertPublicUrl(url);
+  const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(240_000) });
+  if (!res.ok || !res.body) throw new StepError(`Couldn't download the file (${res.status})`);
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared > maxBytes) throw new StepError(`File is larger than ${Math.round(maxBytes / 1048576)} MB`);
+  const chunks: Buffer[] = [];
+  let size = 0;
+  const reader = res.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw new StepError(`File is larger than ${Math.round(maxBytes / 1048576)} MB`);
+    }
+    chunks.push(Buffer.from(value));
+  }
+  const name = decodeURIComponent(new URL(res.url || url).pathname.split("/").pop() || "file");
+  return { data: Buffer.concat(chunks), contentType: res.headers.get("content-type") ?? "application/octet-stream", name };
+}
+
+/** Raw fetch to a known API that returns status, headers and parsed body; throws StepError on non-2xx. */
+export async function apiRaw(url: string, init: RequestInit & { json?: unknown } = {}) {
+  const headers = new Headers(init.headers);
+  let body = init.body;
+  if (init.json !== undefined) {
+    headers.set("content-type", "application/json");
+    body = JSON.stringify(init.json);
+  }
+  const res = await fetch(url, { ...init, headers, body, signal: init.signal ?? AbortSignal.timeout(60_000) });
+  const text = await res.text();
+  let data: unknown = text;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    /* text */
+  }
+  if (!res.ok) {
+    const d = data as { error?: { message?: string } | string; message?: string; errors?: unknown };
+    const msg = (typeof d?.error === "object" ? d.error?.message : d?.error) ?? d?.message ?? (typeof data === "string" ? data.slice(0, 300) : JSON.stringify(data).slice(0, 300));
+    throw new StepError(`${res.status} ${msg}`);
+  }
+  return { status: res.status, headers: res.headers, data };
 }

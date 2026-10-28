@@ -3,6 +3,7 @@
  * Runtime implementations live in lib/engine/modules/*.ts (server only).
  */
 import type { PlanId } from "@/db/schema";
+import { APP_MODULES, APP_DEFS } from "./catalog-apps";
 
 export type FieldType = "text" | "textarea" | "number" | "select" | "boolean" | "code" | "json" | "connection";
 
@@ -21,7 +22,19 @@ export type Field = {
   showIf?: { key: string; equals: unknown };
 };
 
-export type Category = "Triggers" | "Flow control" | "Data" | "AI" | "Messaging" | "Productivity" | "Developer" | "Payments";
+export type Category =
+  | "Triggers"
+  | "Flow control"
+  | "Data"
+  | "AI"
+  | "Social media"
+  | "Messaging"
+  | "Email & marketing"
+  | "CRM & support"
+  | "Commerce"
+  | "Productivity"
+  | "Developer"
+  | "Payments";
 
 export type ModuleMeta = {
   type: string;
@@ -31,6 +44,8 @@ export type ModuleMeta = {
   app: string; // icon / brand key
   color: string;
   trigger?: boolean;
+  /** "watch" trigger: checked on an interval, runs once per new item */
+  poll?: boolean;
   credits: number; // base credits per run
   minPlan?: PlanId;
   fields: Field[];
@@ -40,7 +55,7 @@ export type ModuleMeta = {
 
 const conn = (app: string, label = "Connection"): Field => ({ key: "connectionId", label, type: "connection", app, required: true });
 
-export const CATALOG: ModuleMeta[] = [
+const CORE: ModuleMeta[] = [
   // ───────── Triggers ─────────
   {
     type: "trigger.manual",
@@ -344,7 +359,7 @@ export const CATALOG: ModuleMeta[] = [
     color: "#0f9d58",
     credits: 1,
     fields: [
-      conn("google"),
+      conn("google,google_oauth", "Google connection"),
       { key: "spreadsheetId", label: "Spreadsheet ID", type: "text", required: true },
       { key: "range", label: "Sheet / range", type: "text", default: "Sheet1!A1" },
       { key: "values", label: "Row values (JSON array)", type: "json", default: '["{{trigger.body.name}}", "{{trigger.body.email}}"]' },
@@ -359,7 +374,7 @@ export const CATALOG: ModuleMeta[] = [
     app: "sheets",
     color: "#0f9d58",
     credits: 1,
-    fields: [conn("google"), { key: "spreadsheetId", label: "Spreadsheet ID", type: "text", required: true }, { key: "range", label: "Range", type: "text", default: "Sheet1!A1:Z100" }],
+    fields: [conn("google,google_oauth", "Google connection"), { key: "spreadsheetId", label: "Spreadsheet ID", type: "text", required: true }, { key: "range", label: "Range", type: "text", default: "Sheet1!A1:Z100" }],
     outputs: ["rows"],
   },
   {
@@ -519,10 +534,21 @@ export const CATALOG: ModuleMeta[] = [
   },
 ];
 
+export const CATALOG: ModuleMeta[] = [...CORE, ...APP_MODULES];
+
 export const CATALOG_BY_TYPE: Record<string, ModuleMeta> = Object.fromEntries(CATALOG.map((m) => [m.type, m]));
 
 /** Credential shapes for each connectable app (used by the Connections page). */
-export const APPS: Record<string, { name: string; fields: { key: string; label: string; secret?: boolean; textarea?: boolean; placeholder?: string }[]; help: string }> = {
+export type AppField = { key: string; label: string; secret?: boolean; textarea?: boolean; placeholder?: string; optional?: boolean };
+export type AppDef = {
+  name: string;
+  help: string;
+  fields: AppField[];
+  /** one-click sign-in provider (lib/oauth/providers.ts); fields become the paste-a-token fallback */
+  oauth?: string;
+};
+
+export const APPS: Record<string, AppDef> = {
   slack: { name: "Slack", help: "Slack → Apps → Incoming Webhooks → Add to channel → copy the webhook URL.", fields: [{ key: "webhookUrl", label: "Webhook URL", secret: true }] },
   discord: { name: "Discord", help: "Channel settings → Integrations → Webhooks → New webhook → Copy URL.", fields: [{ key: "webhookUrl", label: "Webhook URL", secret: true }] },
   telegram: { name: "Telegram", help: "Create a bot with @BotFather and paste its token.", fields: [{ key: "botToken", label: "Bot token", secret: true }] },
@@ -540,7 +566,7 @@ export const APPS: Record<string, { name: string; fields: { key: string; label: 
     help: "For Gmail use smtp.gmail.com, port 465 and an App Password.",
     fields: [
       { key: "host", label: "Host" },
-      { key: "port", label: "Port", placeholder: "465" },
+      { key: "port", label: "Port", placeholder: "465", optional: true },
       { key: "user", label: "Username" },
       { key: "pass", label: "Password", secret: true },
       { key: "from", label: "From address" },
@@ -567,10 +593,28 @@ export const APPS: Record<string, { name: string; fields: { key: string; label: 
     name: "HTTP auth",
     help: "Adds an Authorization header to HTTP requests.",
     fields: [
-      { key: "header", label: "Header name", placeholder: "Authorization" },
+      { key: "header", label: "Header name", placeholder: "Authorization", optional: true },
       { key: "value", label: "Header value", secret: true, placeholder: "Bearer sk-…" },
     ],
   },
 };
 
-export const CATEGORIES: Category[] = ["Triggers", "Flow control", "Data", "AI", "Messaging", "Productivity", "Developer", "Payments"];
+Object.assign(APPS, APP_DEFS);
+
+export const CATEGORIES: Category[] = [
+  "Triggers",
+  "Flow control",
+  "Data",
+  "AI",
+  "Social media",
+  "Messaging",
+  "Email & marketing",
+  "CRM & support",
+  "Commerce",
+  "Productivity",
+  "Payments",
+  "Developer",
+];
+
+/** connection fields may accept several apps: app: "google,google_oauth" */
+export const connectionApps = (f: Field) => (f.app ?? "").split(",").filter(Boolean);

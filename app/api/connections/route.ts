@@ -19,7 +19,8 @@ export const POST = withAuth("BUILDER", async (ctx, req) => {
   const b = await body(req, z.object({ app: z.string(), name: z.string().trim().min(1).max(80), values: z.record(z.string()) }));
   const app = APPS[b.app];
   if (!app) return err("Unknown app", 404);
-  for (const f of app.fields) if (!b.values[f.key]?.trim() && !f.placeholder) return err(`${f.label} is required`, 422);
+  if (!app.fields.length) return err(`${app.name} connects with one-click sign-in only`, 422);
+  for (const f of app.fields) if (!f.optional && !b.values[f.key]?.trim()) return err(`${f.label} is required`, 422);
   const values = Object.fromEntries(app.fields.map((f) => [f.key, (b.values[f.key] ?? "").trim()]));
   if (b.app === "google") {
     try {

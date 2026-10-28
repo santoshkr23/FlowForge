@@ -54,7 +54,7 @@ export default async function Workflows({ searchParams }: { searchParams: { new?
                 {rows.map(({ wf, lastRun }) => {
                   const t = findTrigger(wf.graph);
                   const meta = t ? CATALOG_BY_TYPE[t.type] : undefined;
-                  const apps = Array.from(new Set(wf.graph.nodes.filter((n) => !n.type.startsWith("trigger.")).map((n) => CATALOG_BY_TYPE[n.type]).filter(Boolean))).slice(0, 5);
+                  const apps = Array.from(new Set(wf.graph.nodes.filter((n) => !CATALOG_BY_TYPE[n.type]?.trigger).map((n) => CATALOG_BY_TYPE[n.type]).filter(Boolean))).slice(0, 5);
                   return (
                     <tr key={wf.id} className="hover:bg-canvas">
                       <td className="px-5 py-3">
