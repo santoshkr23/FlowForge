@@ -40,6 +40,15 @@ Open http://localhost:3000, sign up with your `ADMIN_EMAILS` address, and you'll
 
 Without `REDIS_URL`, the web server runs workflows and schedules itself — fine for development and small launches.
 
+## Deploy free (Render + Neon)
+
+1. **Database** — neon.tech → sign up → create a project → copy the connection string (`postgresql://…?sslmode=require`).
+2. **App** — render.com → sign up with GitHub → **New → Blueprint** → pick this repo. Render reads `render.yaml` and asks for:
+   `DATABASE_URL` (from Neon), `AUTH_SECRET` and `ENCRYPTION_KEY` (two outputs of `openssl rand -hex 32`), `ADMIN_EMAILS`, and `APP_URL` (`https://<service-name>.onrender.com`).
+3. Wait for the first deploy (~5 min). Tables are created automatically on start.
+
+Free Render services sleep after 15 minutes without visitors and take ~1 minute to wake, so schedules don't fire while asleep. Before selling, switch the service to the Starter plan in `render.yaml` or the dashboard.
+
 ## Deploy in 10 minutes (Railway)
 
 1. railway.com → **New project → Deploy from GitHub repo** → pick this repo.

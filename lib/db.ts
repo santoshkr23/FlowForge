@@ -21,7 +21,8 @@ function create(): DB {
     const client = target === "memory" ? new PGlite() : new PGlite(target);
     return drizzle(client, { schema }) as DB;
   }
-  const client = postgres(url, { max: 10 });
+  // Poolers (Neon "-pooler", PgBouncer) in transaction mode do not support prepared statements.
+  const client = postgres(url, { max: 10, prepare: !/-pooler|pgbouncer=true/.test(url) });
   return drizzlePg(client, { schema }) as unknown as DB;
 }
 

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: flowforge
+    runtime: node
+    plan: free # switch to "starter" ($7/mo) so it never sleeps and schedules always fire
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /pricing
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL # Neon (or any Postgres) connection string
+        sync: false
+      - key: AUTH_SECRET # openssl rand -hex 32
+        sync: false
+      - key: ENCRYPTION_KEY # openssl rand -hex 32 — never change once set
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: APP_URL # e.g. https://flowforge.onrender.com
+        sync: false
