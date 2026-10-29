@@ -7,7 +7,8 @@ import { findTrigger } from "@/lib/engine/graph";
 export const maxDuration = 300;
 const MAX_BODY = 1_000_000;
 
-async function handle(req: Request, { params }: { params: { token: string } }) {
+async function handle(req: Request, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const [wf] = await db.select().from(schema.workflows).where(eq(schema.workflows.webhookToken, params.token)).limit(1);
   if (!wf || wf.triggerType !== "webhook") return NextResponse.json({ error: "Unknown webhook" }, { status: 404 });
   if (!wf.active) return NextResponse.json({ error: "This workflow is switched off" }, { status: 409 });

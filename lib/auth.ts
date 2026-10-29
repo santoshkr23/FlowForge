@@ -19,7 +19,7 @@ export async function signSession(p: SessionPayload) {
 }
 
 export async function createSession(p: SessionPayload) {
-  cookies().set(COOKIE, await signSession(p), {
+  (await cookies()).set(COOKIE, await signSession(p), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -28,8 +28,8 @@ export async function createSession(p: SessionPayload) {
   });
 }
 
-export function destroySession() {
-  cookies().delete(COOKIE);
+export async function destroySession() {
+  (await cookies()).delete(COOKIE);
 }
 
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
@@ -42,7 +42,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 }
 
 export async function readSession() {
-  const token = cookies().get(COOKIE)?.value;
+  const token = (await cookies()).get(COOKIE)?.value;
   return token ? verifySessionToken(token) : null;
 }
 

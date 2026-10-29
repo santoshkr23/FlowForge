@@ -9,7 +9,8 @@ import { planAllows } from "@/lib/plans";
 export const metadata = { title: "Run history" };
 const PAGE = 50;
 
-export default async function Executions({ searchParams }: { searchParams: { status?: string; q?: string; before?: string; wf?: string } }) {
+export default async function Executions(props: { searchParams: Promise<{ status?: string; q?: string; before?: string; wf?: string }> }) {
+  const searchParams = await props.searchParams;
   const ctx = await requireCtx();
   const e = schema.executions;
   const conds: SQL[] = [eq(e.orgId, ctx.org.id)];

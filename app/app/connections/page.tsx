@@ -7,7 +7,8 @@ import { PROVIDERS, providerConfigured } from "@/lib/oauth/providers";
 
 export const metadata = { title: "Connections" };
 
-export default async function ConnectionsPage({ searchParams }: { searchParams: { add?: string; connected?: string; error?: string } }) {
+export default async function ConnectionsPage(props: { searchParams: Promise<{ add?: string; connected?: string; error?: string }> }) {
+  const searchParams = await props.searchParams;
   const ctx = await requireCtx();
   const rows = await db
     .select({ id: schema.connections.id, app: schema.connections.app, name: schema.connections.name, createdAt: schema.connections.createdAt })

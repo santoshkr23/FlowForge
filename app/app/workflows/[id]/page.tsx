@@ -6,7 +6,8 @@ import { Builder } from "@/components/builder/Builder";
 
 export const metadata = { title: "Edit workflow" };
 
-export default async function EditWorkflow({ params }: { params: { id: string } }) {
+export default async function EditWorkflow(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireCtx();
   const [wf] = await db
     .select()

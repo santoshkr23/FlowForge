@@ -9,7 +9,8 @@ import { razorpayEnabled } from "@/lib/billing/razorpay";
 
 export const metadata = { title: "Billing" };
 
-export default async function BillingPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+export default async function BillingPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const searchParams = await props.searchParams;
   const ctx = await requireCtx();
   const payments = await db.select().from(schema.payments).where(eq(schema.payments.orgId, ctx.org.id)).orderBy(desc(schema.payments.createdAt)).limit(24);
   const o = ctx.org;

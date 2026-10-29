@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     res.cookies.delete({ name: "ff_oauth", path: "/api/oauth" });
     return res;
   };
-  const raw = cookies().get("ff_oauth")?.value;
+  const raw = (await cookies()).get("ff_oauth")?.value;
   if (!raw) return done("error=" + encodeURIComponent("Sign-in took too long. Please try again."));
   let p: Pending;
   try {

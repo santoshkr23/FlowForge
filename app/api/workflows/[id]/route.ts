@@ -10,7 +10,7 @@ const NodeZ = z.object({
   id: z.string().min(1).max(64),
   type: z.string(),
   position: z.object({ x: z.number(), y: z.number() }),
-  data: z.object({ label: z.string().max(120).optional(), config: z.record(z.unknown()).default({}) }),
+  data: z.object({ label: z.string().max(120).optional(), config: z.record(z.string(), z.unknown()).default({}) }),
 });
 const GraphZ = z.object({
   nodes: z.array(NodeZ).max(200),

@@ -5,7 +5,8 @@ import { err, handleError, json } from "@/lib/http";
 export const maxDuration = 300;
 
 /** POST /api/v1/workflows/:id/run  body: any JSON → becomes the trigger input */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const org = await orgFromApiKey(req);
     if (!org) return err("Invalid API key", 401);

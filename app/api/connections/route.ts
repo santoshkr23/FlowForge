@@ -16,7 +16,7 @@ export const GET = withAuth("VIEWER", async (ctx) => {
 });
 
 export const POST = withAuth("BUILDER", async (ctx, req) => {
-  const b = await body(req, z.object({ app: z.string(), name: z.string().trim().min(1).max(80), values: z.record(z.string()) }));
+  const b = await body(req, z.object({ app: z.string(), name: z.string().trim().min(1).max(80), values: z.record(z.string(), z.string()) }));
   const app = APPS[b.app];
   if (!app) return err("Unknown app", 404);
   if (!app.fields.length) return err(`${app.name} connects with one-click sign-in only`, 422);

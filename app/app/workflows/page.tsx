@@ -12,7 +12,8 @@ import { timeAgo } from "@/lib/format";
 
 export const metadata = { title: "Workflows" };
 
-export default async function Workflows({ searchParams }: { searchParams: { new?: string } }) {
+export default async function Workflows(props: { searchParams: Promise<{ new?: string }> }) {
+  const searchParams = await props.searchParams;
   const ctx = await requireCtx();
   const w = schema.workflows;
   const rows = await db

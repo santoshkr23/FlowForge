@@ -1,10 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    instrumentationHook: true,
-    serverComponentsExternalPackages: ["@electric-sql/pglite", "bullmq", "ioredis", "nodemailer"],
-  },
+  // server-only packages that must not be bundled
+  serverExternalPackages: ["@electric-sql/pglite", "bullmq", "ioredis", "nodemailer"],
 };
 
 export default nextConfig;

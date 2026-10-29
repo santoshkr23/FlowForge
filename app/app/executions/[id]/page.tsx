@@ -9,7 +9,8 @@ import { duration } from "@/lib/format";
 
 export const metadata = { title: "Run" };
 
-export default async function Execution({ params }: { params: { id: string } }) {
+export default async function Execution(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireCtx();
   const [row] = await db
     .select({ ex: schema.executions, name: schema.workflows.name })

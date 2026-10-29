@@ -16,22 +16,23 @@ export class HttpError extends Error {
 }
 
 export function handleError(e: unknown) {
-  if (e instanceof ZodError) return err(e.errors.map((x) => `${x.path.join(".") || "body"}: ${x.message}`).join("; "), 422);
+  if (e instanceof ZodError) return err(e.issues.map((x) => `${x.path.join(".") || "body"}: ${x.message}`).join("; "), 422);
   if (e instanceof HttpError) return err(e.message, e.status);
   console.error(e);
   return err("Something went wrong", 500);
 }
 
 type RouteArgs = { params: Record<string, string> };
+type NextRouteArgs = { params: Promise<Record<string, string>> };
 
 /** Wrap an API handler with auth + role check + error handling. */
 export function withAuth(minRole: Role, handler: (ctx: Ctx, req: Request, args: RouteArgs) => Promise<Response>) {
-  return async (req: Request, args: RouteArgs) => {
+  return async (req: Request, args: NextRouteArgs) => {
     try {
       const ctx = await getCtx();
       if (!ctx) return err("Not signed in", 401);
       if (!hasRole(ctx.role, minRole)) return err("You don't have permission to do that", 403);
-      return await handler(ctx, req, args);
+      return await handler(ctx, req, { params: (await args?.params) ?? {} });
     } catch (e) {
       return handleError(e);
     }

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport";
 import { resolveJsonField } from "../template";
 import { apiCall, httpRequest } from "../net";
 import { StepError, type ModuleRunner } from "../types";
@@ -8,12 +9,12 @@ const s = (v: unknown) => (v == null ? "" : String(v));
 
 export const apps: Record<string, ModuleRunner> = {
   "email.send": async ({ config, connection }) => {
-    let transportOpts: nodemailer.TransportOptions | string;
+    let transportOpts: SMTPTransport.Options;
     let from: string;
     if (config.connectionId) {
       const c = await connection<{ host: string; port: string; user: string; pass: string; from?: string }>(config.connectionId);
       const port = Number(c.port) || 465;
-      transportOpts = { host: c.host, port, secure: port === 465, auth: { user: c.user, pass: c.pass } } as nodemailer.TransportOptions;
+      transportOpts = { host: c.host, port, secure: port === 465, auth: { user: c.user, pass: c.pass } };
       from = c.from || c.user;
     } else {
       if (!process.env.SMTP_HOST) throw new StepError("No SMTP connection selected and platform SMTP is not configured");
@@ -23,7 +24,7 @@ export const apps: Record<string, ModuleRunner> = {
         port,
         secure: port === 465,
         auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-      } as nodemailer.TransportOptions;
+      };
       from = process.env.SMTP_FROM || "no-reply@example.com";
     }
     const info = await nodemailer.createTransport(transportOpts).sendMail({
