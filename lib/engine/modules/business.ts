@@ -4,6 +4,7 @@ import postgres from "postgres";
 import { apiCall, apiRaw, assertPublicHost, downloadFile, httpRequest } from "../net";
 import { resolveJsonField } from "../template";
 import { readFeed } from "../rss";
+import { normalizePgUrl } from "../../pg-url";
 import { StepError, type ModuleRunner } from "../types";
 
 const s = (v: unknown) => (v == null ? "" : String(v)).trim();
@@ -360,16 +361,17 @@ export const business: Record<string, ModuleRunner> = {
   },
   "postgres.query": async ({ config, raw, scope, connection }) => {
     const c = await connection<{ connectionString: string }>(config.connectionId);
-    let host: string;
+    let connStr: string;
     try {
-      host = new URL(c.connectionString).hostname;
-    } catch {
-      throw new StepError("The connection string isn't valid");
+      connStr = normalizePgUrl(c.connectionString);
+    } catch (e) {
+      throw new StepError((e as Error).message);
     }
+    const host = new URL(connStr).hostname;
     await assertPublicHost(host);
     const params = (resolveJsonField(raw.params, scope) ?? []) as unknown[];
     if (!Array.isArray(params)) throw new StepError("Values must be a JSON array");
-    const sql = postgres(c.connectionString, { max: 1, connect_timeout: 10, idle_timeout: 2, prepare: false, connection: { statement_timeout: 30_000 } as never });
+    const sql = postgres(connStr, { max: 1, connect_timeout: 10, idle_timeout: 2, prepare: false, connection: { statement_timeout: 30_000 } as never });
     try {
       const rows = await sql.unsafe(String(raw.sql ?? ""), params as never[]);
       const out = Array.from(rows).slice(0, 1000);

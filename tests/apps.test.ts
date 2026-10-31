@@ -343,3 +343,13 @@ test("all templates are valid workflows", async () => {
   const { validateGraph } = await import("../lib/engine/graph");
   for (const t of TEMPLATES) assert.deepEqual(validateGraph(t.graph), [], t.id);
 });
+
+test("database URLs: Neon snippet and channel_binding are handled", async () => {
+  const { normalizePgUrl } = await import("../lib/pg-url");
+  const plain = "postgresql://u:p@ep-x-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
+  const clean = "postgresql://u:p@ep-x-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require";
+  assert.equal(normalizePgUrl(plain), clean);
+  assert.equal(normalizePgUrl(`psql '${plain}'`), clean);
+  assert.equal(normalizePgUrl(` DATABASE_URL="${plain}" `), clean);
+  assert.throws(() => normalizePgUrl("psql -h host -U user"), /should start with postgresql/);
+});
