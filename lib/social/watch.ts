@@ -50,7 +50,14 @@ async function profileItems(url: string): Promise<Item[]> {
 
 async function feedItems(url: string): Promise<Item[]> {
   const items = await readFeed(url);
-  return items.map((i) => ({ id: i.id || i.link, link: i.link, title: i.title, summary: i.summary, author: i.author }));
+  // feeds built from a single LinkedIn post list its hashtag / sign-up links as "items" — those aren't posts
+  const junk = /linkedin\.com\/(signup|login|authwall|feed\/hashtag|uas\/|legal|help)/i;
+  const posts = items.filter((i) => i.link && !junk.test(decodeURIComponent(i.link)));
+  if (items.length && !posts.length)
+    throw new StepError(
+      "This feed doesn't contain posts — it looks like it was made from a single post (its items are hashtag/sign-up links). A feed must be made from the person's profile, page or newsletter.",
+    );
+  return posts.map((i) => ({ id: i.id || i.link, link: i.link, title: i.title, summary: i.summary, author: i.author }));
 }
 
 export async function listItems(w: Pick<Watch, "feedUrl" | "profileUrl">): Promise<Item[]> {

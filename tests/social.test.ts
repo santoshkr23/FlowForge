@@ -470,3 +470,13 @@ test("Facebook Page: several pictures go up unpublished, then one post with atta
   const feed = new URLSearchParams(find(/\/PAGE\/feed/)!.body);
   assert.equal(feed.get("attached_media[1]"), JSON.stringify({ media_fbid: "P2" }));
 });
+
+test("feed made from a single post (hashtag/sign-up links only) is rejected with a clear message", async () => {
+  const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>x</title><link>https://lnkd.in/p/abc</link>
+  <item><title>#AI</title><link>https://www.linkedin.com/signup/cold-join?session_redirect=https%3A%2F%2Fwww.linkedin.com%2Ffeed%2Fhashtag%2Fai</link><guid>g1</guid></item>
+  </channel></rss>`;
+  on("GET", /rss\.app\/feeds\/single/, () => ({ text: xml, headers: { "content-type": "application/rss+xml" } }));
+  const [w] = await db.insert(schema.watches).values({ orgId, name: "Feed", feedUrl: "https://rss.app/feeds/single.xml", targets: [], mode: "draft" }).returning();
+  const r = await checkWatch(w);
+  assert.match(r.error ?? "", /single post/);
+});
