@@ -4,6 +4,7 @@ import { jwtVerify } from "jose";
 import { db, schema } from "@/lib/db";
 import { encryptJson } from "@/lib/crypto";
 import { exchangeCode } from "@/lib/oauth/tokens";
+import { siteUrl } from "@/lib/oauth/providers";
 import { audit } from "@/lib/audit";
 
 const secret = () => new TextEncoder().encode(process.env.AUTH_SECRET ?? "dev-secret-change-me-dev-secret-change-me");
@@ -14,12 +15,15 @@ type Pending = { state: string; verifier?: string; redirect?: string; app: strin
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const done = (q: string) => {
-    const res = NextResponse.redirect(new URL(`/app/connections?${q}`, req.url));
+    const res = NextResponse.redirect(`${siteUrl(req)}/app/connections?${q}`);
     res.cookies.delete({ name: "ff_oauth", path: "/api/oauth" });
     return res;
   };
+  // If the app (LinkedIn, Google…) refused, show its reason — that's what the user needs to fix.
+  const providerError = url.searchParams.get("error_description") ?? url.searchParams.get("error");
+  if (providerError) return done("error=" + encodeURIComponent(`The app refused the connection: ${providerError.replace(/\+/g, " ")}`));
   const raw = (await cookies()).get("ff_oauth")?.value;
-  if (!raw) return done("error=" + encodeURIComponent("Sign-in took too long. Please try again."));
+  if (!raw) return done("error=" + encodeURIComponent("This sign-in link was already used or has expired. Click Connect again."));
   let p: Pending;
   try {
     p = (await jwtVerify(raw, secret())).payload as unknown as Pending;
@@ -27,8 +31,6 @@ export async function GET(req: Request) {
     return done("error=" + encodeURIComponent("Sign-in took too long. Please try again."));
   }
   if (url.searchParams.get("state") !== p.state) return done("error=" + encodeURIComponent("Sign-in couldn't be verified. Please try again."));
-  const providerError = url.searchParams.get("error_description") ?? url.searchParams.get("error");
-  if (providerError) return done("error=" + encodeURIComponent(`Sign-in was cancelled or refused: ${providerError}`));
   const code = url.searchParams.get("code");
   if (!code) return done("error=" + encodeURIComponent("The app didn't send a sign-in code."));
 

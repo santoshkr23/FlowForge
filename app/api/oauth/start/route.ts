@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { SignJWT } from "jose";
 import { getCtx, hasRole } from "@/lib/auth";
 import { APPS } from "@/lib/engine/catalog";
-import { PROVIDERS, clientId, providerConfigured, redirectUri } from "@/lib/oauth/providers";
+import { PROVIDERS, clientId, providerConfigured, redirectUri, siteUrl } from "@/lib/oauth/providers";
 
 const secret = () => new TextEncoder().encode(process.env.AUTH_SECRET ?? "dev-secret-change-me-dev-secret-change-me");
 const b64url = (b: Buffer) => b.toString("base64url");
@@ -11,9 +11,10 @@ const b64url = (b: Buffer) => b.toString("base64url");
 /** GET /api/oauth/start?app=google_oauth&name=My%20Google → redirects to the provider's consent screen. */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const back = (msg: string) => NextResponse.redirect(new URL(`/app/connections?error=${encodeURIComponent(msg)}`, req.url));
+  const site = siteUrl(req);
+  const back = (msg: string) => NextResponse.redirect(`${site}/app/connections?error=${encodeURIComponent(msg)}`);
   const ctx = await getCtx();
-  if (!ctx) return NextResponse.redirect(new URL("/login", req.url));
+  if (!ctx) return NextResponse.redirect(`${site}/login`);
   if (!hasRole(ctx.role, "BUILDER")) return back("You don't have permission to add connections");
 
   const app = url.searchParams.get("app") ?? "";
