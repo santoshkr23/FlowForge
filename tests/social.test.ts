@@ -213,3 +213,81 @@ test("hashtags: topic + keyword suggestions, skipping tags already in the post",
   assert.equal(r.source, "keywords");
   assert.ok(r.tags.includes("Hiring") && r.tags.includes("SQL"));
 });
+
+// ── copy & clean ────────────────────────────────────────────────────────────
+import { cleanPost, rewritePost } from "../lib/social/rewrite";
+import { publisher } from "../lib/engine/modules/publisher";
+import { TEMPLATES } from "../lib/templates";
+import { CATALOG_BY_TYPE } from "../lib/engine/catalog";
+import { RUNNERS } from "../lib/engine/runner";
+
+const PASTED = `Priya Sharma
+• 2nd
+Data Analyst | Power BI
+1w • Edited •
+Most people learn SQL the wrong way.
+
+Here's the order that worked for me:
+1. SELECT & WHERE
+2. JOINs
+3. Window functions …see more
+
+Thanks @Rahul Verma for the tips!
+♻️ Repost to help your network
+Follow Priya Sharma for more data tips
+
+#SQL #DataAnalytics #Learning
+No alternative text description for this image
+1,234 reactions
+87 comments
+Like
+Comment
+Repost
+Send`;
+
+test("cleanPost strips LinkedIn clutter, follow/repost asks and the hashtag block, keeping the content", () => {
+  const { text, hashtags } = cleanPost(PASTED);
+  assert.ok(text.startsWith("Most people learn SQL the wrong way."), text.slice(0, 80));
+  assert.match(text, /3\. Window functions$/m);
+  assert.match(text, /Thanks Rahul Verma for the tips!/);
+  for (const junk of [/see more/i, /Repost to help/, /Follow Priya/, /reactions/, /^Like$/m, /^Send$/m, /#SQL/, /1w/, /No alternative text/])
+    assert.doesNotMatch(text, junk);
+  assert.deepEqual(hashtags, ["SQL", "DataAnalytics", "Learning"]);
+});
+
+test("rewritePost without AI: cleans, adds credit and hashtags (original tags first)", async () => {
+  const r = await rewritePost(PASTED, { style: "rewrite", author: "Priya Sharma", url: "https://lnkd.in/x" });
+  assert.equal(r.source, "clean");
+  assert.match(r.text, /📌 Credit: Priya Sharma — https:\/\/lnkd\.in\/x/);
+  assert.deepEqual(r.hashtags.slice(0, 3), ["SQL", "DataAnalytics", "Learning"]);
+  assert.ok(r.text.trim().endsWith(r.hashtags.map((t) => `#${t}`).join(" ")));
+  const noCredit = await rewritePost("<p>Hello <b>world</b></p><p>Line&nbsp;two</p>", { credit: false, maxTags: 0 });
+  assert.equal(noCredit.text, "Hello world\n\nLine two");
+});
+
+test("workflow steps: rewrite then save to drafts; 'post now' publishes to the chosen account", async () => {
+  assert.ok(CATALOG_BY_TYPE["social.rewrite"] && RUNNERS["social.rewrite"] && RUNNERS["social.draft"]);
+  const ctx = (config: Record<string, unknown>) => ({ config, orgId, log: () => {} }) as never;
+  const r = (await publisher["social.rewrite"](ctx({ text: PASTED, style: "clean", author: "Priya", url: "" }))).output as { text: string };
+  const d = (await publisher["social.draft"](ctx({ text: r.text, mode: "draft" }))).output as { postId: string; status: string };
+  const [row] = await db.select().from(schema.posts).where(eq(schema.posts.id, d.postId));
+  assert.equal(row.status, "draft");
+  assert.match(row.text, /Credit: Priya/);
+  // drafts are never picked up by the scheduler
+  assert.equal((await db.select().from(schema.posts).where(eq(schema.posts.status, "posting"))).length, 0);
+
+  const x = await conn("twitter", oauth("twitter", { username: "me" }));
+  on("POST", /api\.x\.com\/2\/tweets/, () => ({ json: { data: { id: "55" } } }));
+  const out = (await publisher["social.draft"](ctx({ text: "Short take", mode: "post", connectionId: x }))).output as { status: string; url: string };
+  assert.equal(out.status, "posted");
+  assert.equal(out.url, "https://x.com/me/status/55");
+  await assert.rejects(publisher["social.draft"](ctx({ text: "x", mode: "post" })), /Pick the account/);
+});
+
+test("reshare templates only use real steps", () => {
+  for (const id of ["creator-reshare-review", "paste-post-to-linkedin"]) {
+    const t = TEMPLATES.find((x) => x.id === id)!;
+    assert.ok(t, id);
+    for (const n of t.graph.nodes) assert.ok(CATALOG_BY_TYPE[n.type], `${id}: ${n.type}`);
+  }
+});

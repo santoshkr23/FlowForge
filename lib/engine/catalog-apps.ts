@@ -150,6 +150,53 @@ export const APP_MODULES: ModuleMeta[] = [
 
   // ───────── Social media ─────────
   act({
+    type: "social.rewrite",
+    name: "Social: clean & rewrite a post",
+    description: "Strip 'see more', follow/repost asks and clutter from a copied post, optionally rewrite it in fresh words with AI, add a credit line and hashtags.",
+    category: "Social media",
+    app: "sparkles",
+    color: "#ec4899",
+    credits: 2,
+    fields: [
+      ta("text", "Post text", { required: true, placeholder: "{{trigger.summary}}" }),
+      sel("style", "Style", [
+        ["clean", "Clean up only (keep wording)"],
+        ["rewrite", "Rewrite in my own words (AI)"],
+        ["short", "Make it short (AI)"],
+        ["hook", "Strong hook + question (AI)"],
+      ]),
+      t("author", "Original author (for credit)", { placeholder: "{{trigger.author}}" }),
+      t("url", "Original post link (for credit)", { placeholder: "{{trigger.link}}" }),
+      sel("credit", "Add credit line", [
+        ["true", "Yes"],
+        ["false", "No"],
+      ]),
+      num("maxTags", "Hashtags to add", { default: 5 }),
+    ],
+    outputs: ["text", "body", "hashtags", "source"],
+  }),
+  act({
+    type: "social.draft",
+    name: "Social: save draft or post",
+    description: "Put a post in Social → Drafts for you to review, or post it straight away to a connected account.",
+    category: "Social media",
+    app: "linkedin",
+    color: C.linkedin,
+    credits: 0,
+    fields: [
+      ta("text", "Post text", { required: true, placeholder: "{{steps.clean.text}}" }),
+      t("link", "Link (optional)"),
+      t("fileUrl", "Picture or PDF URL (optional)", { help: "A public link to a JPG, PNG or PDF to attach." }),
+      t("mediaTitle", "File title (optional)"),
+      sel("mode", "What to do", [
+        ["draft", "Save as draft for review (recommended)"],
+        ["post", "Post now"],
+      ]),
+      { ...conn("linkedin,facebook,twitter,bluesky,mastodon,discord,slack", "Account (needed for 'Post now')"), required: false },
+    ],
+    outputs: ["postId", "status", "url"],
+  }),
+  act({
     type: "instagram.post",
     name: "Instagram: publish post",
     description: "Publish a photo or Reel to an Instagram Business or Creator account.",

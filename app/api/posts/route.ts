@@ -35,7 +35,11 @@ const Body = z.object({
   link: z.string().trim().url().max(2000).optional().or(z.literal("").transform(() => undefined)),
   mediaId: z.string().optional(),
   mediaTitle: z.string().trim().max(200).optional(),
-  targets: z.array(z.string()).min(1, "Pick at least one account"),
+  targets: z.array(z.string()).default([]),
+  /** save for later review instead of posting */
+  draft: z.boolean().default(false),
+  /** the draft this post was made from — removed once posted/scheduled */
+  fromDraft: z.string().optional(),
   scheduledAt: z.string().datetime({ offset: true }).optional(),
 });
 
@@ -50,6 +54,7 @@ export const POST = withAuth("BUILDER", async (ctx, req) => {
     .where(eq(schema.connections.orgId, ctx.org.id));
   const accounts = new Map(accountsFrom(conns).map((a) => [a.target, a]));
   const targets = [...new Set(b.targets)];
+  if (!b.draft && !targets.length) return err("Pick at least one account", 422);
   for (const t of targets) if (!accounts.has(t)) return err("One of the selected accounts isn't connected any more", 422);
 
   if (b.mediaId) {
@@ -57,7 +62,7 @@ export const POST = withAuth("BUILDER", async (ctx, req) => {
     if (!m) return err("Attached file not found", 422);
   }
   // catch the obvious problems before anything is posted
-  for (const t of targets) {
+  for (const t of b.draft ? [] : targets) {
     const a = accounts.get(t)!;
     if (a.channel === "instagram" && !b.mediaId) return err("Instagram needs a picture — attach one or untick Instagram", 422);
     if (a.channel === "x" && xLength([b.text, b.link].filter(Boolean).join("\n\n")) > 280) return err("Too long for X (280 characters, links count as 23). Shorten it or untick X.", 422);
@@ -78,12 +83,14 @@ export const POST = withAuth("BUILDER", async (ctx, req) => {
       mediaTitle: b.mediaTitle || null,
       targets,
       baseUrl: siteUrl(req),
-      status: "scheduled",
-      scheduledAt: later ? when : new Date(),
+      status: b.draft ? "draft" : "scheduled",
+      scheduledAt: b.draft ? when : later ? when : new Date(),
     })
     .returning();
-  await audit(ctx.org.id, ctx.user.id, later ? "post.scheduled" : "post.published", post.id, { targets: targets.length });
-  if (later) return json(post, 201);
+  await audit(ctx.org.id, ctx.user.id, b.draft ? "post.drafted" : later ? "post.scheduled" : "post.published", post.id, { targets: targets.length });
+  if (b.fromDraft && !b.draft)
+    await db.delete(schema.posts).where(and(eq(schema.posts.id, b.fromDraft), eq(schema.posts.orgId, ctx.org.id), eq(schema.posts.status, "draft")));
+  if (b.draft || later) return json(post, 201);
   if (!(await claimPost(post.id))) return json(post, 201);
   return json(await publishPost(post.id), 201);
 });

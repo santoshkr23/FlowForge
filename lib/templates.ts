@@ -12,6 +12,38 @@ const e = (s: string, t: string) => ({ id: `${s}->${t}`, source: s, target: t })
 
 export const TEMPLATES: Template[] = [
   {
+    id: "creator-reshare-review",
+    name: "Creator you follow posts → clean & rewrite → your drafts",
+    description:
+      "Watch a creator's feed (their blog, newsletter, Substack, Medium or YouTube). Each new post is cleaned up, rewritten in fresh words with a credit line and hashtags, and waits in Social → Drafts for you to approve.",
+    category: "Social media",
+    apps: ["rss", "sparkles", "linkedin"],
+    graph: {
+      nodes: [
+        n("trigger", "rss.watch", 40, 200, "Creator posts something", { url: "https://their-newsletter.substack.com/feed", intervalMin: 60 }),
+        n("clean", "social.rewrite", 320, 200, "Clean & rewrite", { text: "{{trigger.title}}\n\n{{trigger.summary}}", style: "rewrite", author: "Creator name", url: "{{trigger.link}}", credit: "true", maxTags: 5 }),
+        n("draft", "social.draft", 600, 200, "Save to my drafts", { text: "{{steps.clean.text}}", mode: "draft" }),
+      ],
+      edges: [e("trigger", "clean"), e("clean", "draft")],
+    },
+  },
+  {
+    id: "paste-post-to-linkedin",
+    name: "Send a copied post → clean it → post on my LinkedIn",
+    description:
+      "Send any post's text to this workflow's webhook (from a phone shortcut, a form or another app) with the author's name and link. It removes the clutter, adds credit and hashtags, and posts it on your LinkedIn.",
+    category: "Social media",
+    apps: ["webhook", "sparkles", "linkedin"],
+    graph: {
+      nodes: [
+        n("trigger", "trigger.webhook", 40, 200, "Post text received", { respond: "accepted" }),
+        n("clean", "social.rewrite", 320, 200, "Clean it", { text: "{{trigger.body.text}}", style: "clean", author: "{{trigger.body.author}}", url: "{{trigger.body.url}}", credit: "true", maxTags: 5 }),
+        n("post", "social.draft", 600, 200, "Post on LinkedIn", { text: "{{steps.clean.text}}", fileUrl: "{{trigger.body.fileUrl}}", mode: "post", connectionId: "" }),
+      ],
+      edges: [e("trigger", "clean"), e("clean", "post")],
+    },
+  },
+  {
     id: "youtube-to-socials",
     name: "New YouTube video → X, LinkedIn, Facebook & Bluesky",
     description: "When your channel publishes a video, AI writes a short post and shares it everywhere at once.",

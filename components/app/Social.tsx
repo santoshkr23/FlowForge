@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
-import { CalendarClock, FileText, Hash, ImageIcon, Paperclip, Repeat2, Send, Trash2, X as Close } from "lucide-react";
+import { CalendarClock, FilePen, FileText, Hash, ImageIcon, Paperclip, Repeat2, Send, Sparkles, Trash2, X as Close } from "lucide-react";
 import { AppIcon } from "../AppIcon";
 import { api } from "@/lib/client";
 import { timeAgo } from "@/lib/format";
@@ -54,6 +54,11 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
   const [repost, setRepost] = useState(false);
   const [srcUrl, setSrcUrl] = useState("");
   const [srcName, setSrcName] = useState("");
+  const [srcText, setSrcText] = useState("");
+  const [style, setStyle] = useState<"clean" | "rewrite" | "short" | "hook">("clean");
+  const [credit, setCredit] = useState(true);
+  const [cleaning, setCleaning] = useState(false);
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,7 +69,7 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
   const warnings = chosen.flatMap((a) => {
     const c = CHANNELS[a.channel];
     const out: string[] = [];
-    if (a.channel === "instagram" && !file?.mime.startsWith("image/")) out.push(`${a.name}: Instagram needs a picture`);
+    if (a.channel === "instagram" && (!file || file.mime === "application/pdf")) out.push(`${a.name}: Instagram needs a picture`);
     if (a.channel === "x" && xLength(fullText) > 280) out.push(`${a.name}: ${xLength(fullText)}/280 characters`);
     else if (a.channel === "bluesky" && [...fullText].length > 300) out.push(`${a.name}: ${[...fullText].length}/300 characters`);
     else if (c.limit && a.channel !== "x" && [...text].length > c.limit) out.push(`${a.name}: over ${c.limit} characters`);
@@ -120,15 +125,47 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
     });
   }
 
-  function addCredit() {
-    if (!srcUrl.trim() && !srcName.trim()) return;
-    const who = srcName.trim() ? `${srcName.trim()}` : "the original author";
-    const line = `📌 Credit: ${who}${srcUrl.trim() ? ` — ${srcUrl.trim()}` : ""}`;
-    setText((s) => (s.includes(line) ? s : `${s.replace(/\s+$/, "")}${s.trim() ? "\n\n" : ""}${line}`));
-    setRepost(false);
+  async function cleanIt() {
+    if (!srcText.trim()) return;
+    setCleaning(true);
+    setMsg(null);
+    try {
+      const r = await api<{ text: string; hashtags: string[]; source: "ai" | "clean" }>("/api/posts/rewrite", {
+        body: { text: srcText, style, author: srcName || undefined, url: srcUrl || undefined, credit },
+      });
+      setText(r.text);
+      setTags(r.hashtags);
+      setTagSource(null);
+      setRepost(false);
+      setMsg({
+        ok: true,
+        text:
+          r.source === "ai"
+            ? "Rewritten and cleaned — check it reads right, then post or save as a draft."
+            : style === "clean"
+              ? "Cleaned — clutter, follow/repost asks and old hashtags removed. Check it, then post or save as a draft."
+              : "Cleaned. AI rewriting needs an OpenAI or Anthropic key on the server, so the original wording was kept.",
+      });
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setCleaning(false);
+    }
   }
 
-  async function submit(e: React.FormEvent) {
+  function editDraft(p: PostRow) {
+    setDraftId(p.id);
+    setText(p.text);
+    setLink(p.link ?? "");
+    setTitle(p.mediaTitle ?? "");
+    setFile(p.mediaId ? { id: p.mediaId, name: p.mediaTitle || "Attached file", mime: "application/octet-stream", size: 0, url: "" } : null);
+    setPreview(null);
+    if (p.targets.length) setSelected(p.targets.filter((t) => accounts.some((a) => a.target === t)));
+    setMsg({ ok: true, text: "Draft loaded — edit it, pick accounts and post or schedule." });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function submit(e: React.FormEvent, asDraft = false) {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
@@ -141,11 +178,15 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
           mediaTitle: title.trim() || undefined,
           targets: selected,
           scheduledAt: mode === "later" ? new Date(when).toISOString() : undefined,
+          draft: asDraft,
+          fromDraft: draftId ?? undefined,
         },
       });
-      setPosts([p, ...posts]);
+      setPosts([p, ...posts.filter((x) => asDraft || x.id !== draftId)]);
+      if (!asDraft) setDraftId(null);
       const res = p.results ?? [];
-      if (p.status === "scheduled") setMsg({ ok: true, text: `Scheduled for ${new Date(p.scheduledAt!).toLocaleString()}.` });
+      if (p.status === "draft") setMsg({ ok: true, text: "Saved to Drafts." });
+      else if (p.status === "scheduled") setMsg({ ok: true, text: `Scheduled for ${new Date(p.scheduledAt!).toLocaleString()}.` });
       else if (p.status === "posted") setMsg({ ok: true, text: `Posted to ${res.length} account${res.length > 1 ? "s" : ""}.` });
       else setMsg({ ok: false, text: res.filter((r) => !r.ok).map((r) => `${r.account ?? r.app}: ${r.error}`).join(" · ") || "Posting failed" });
       if (p.status !== "failed") {
@@ -157,6 +198,8 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
         setTags([]);
         setSrcName("");
         setSrcUrl("");
+        setSrcText("");
+        setDraftId(null);
       }
     } catch (err) {
       setMsg({ ok: false, text: (err as Error).message });
@@ -167,7 +210,7 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
 
   async function remove(id: string) {
     const p = posts.find((x) => x.id === id);
-    if (!confirm(p?.status === "scheduled" ? "Cancel this scheduled post?" : "Remove this from history? (It stays on the platforms.)")) return;
+    if (!confirm(p?.status === "scheduled" ? "Cancel this scheduled post?" : p?.status === "draft" ? "Delete this draft?" : "Remove this from history? (It stays on the platforms.)")) return;
     try {
       await api(`/api/posts/${id}`, { method: "DELETE" });
       setPosts(posts.filter((x) => x.id !== id));
@@ -176,8 +219,9 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
     }
   }
 
+  const drafts = posts.filter((p) => p.status === "draft");
   const scheduled = posts.filter((p) => p.status === "scheduled" || p.status === "posting");
-  const history = posts.filter((p) => p.status !== "scheduled" && p.status !== "posting");
+  const history = posts.filter((p) => !["draft", "scheduled", "posting"].includes(p.status));
   const nameOf = (t: string) => accounts.find((a) => a.target === t);
 
   return (
@@ -226,21 +270,40 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
               Post
             </label>
             <button type="button" className="mb-1 flex items-center gap-1 text-sm text-wire" onClick={() => setRepost((v) => !v)}>
-              <Repeat2 size={14} /> Repost someone's post
+              <Repeat2 size={14} /> Copy & clean someone's post
             </button>
           </div>
           {repost && (
-            <div className="mb-3 space-y-2 rounded-lg border border-line bg-canvas p-3 text-sm">
+            <div className="mb-3 space-y-3 rounded-lg border border-line bg-canvas p-3 text-sm">
               <p className="text-ink-soft">
-                LinkedIn doesn't let apps read other people's posts. Download their PDF or picture, attach it below, and credit them here. Only repost content you have permission to share.
+                Open their post on LinkedIn, copy the text (and download the PDF or picture if there is one), and paste it here. FlowForge removes the clutter — "…see more", reaction counts, "follow me / repost ♻️" lines and old hashtags — adds a credit line and fresh hashtags. Only reshare content you have permission to use.
               </p>
+              <textarea className="input bg-paper" rows={5} placeholder="Paste their post here" value={srcText} onChange={(e) => setSrcText(e.target.value)} aria-label="Their post" />
               <div className="grid gap-2 sm:grid-cols-2">
-                <input className="input" placeholder="Their name (e.g. Priya Sharma)" value={srcName} onChange={(e) => setSrcName(e.target.value)} />
-                <input className="input" placeholder="Link to their post or profile" value={srcUrl} onChange={(e) => setSrcUrl(e.target.value)} />
+                <input className="input bg-paper" placeholder="Their name (e.g. Priya Sharma)" value={srcName} onChange={(e) => setSrcName(e.target.value)} aria-label="Their name" />
+                <input className="input bg-paper" placeholder="Link to their post or profile" value={srcUrl} onChange={(e) => setSrcUrl(e.target.value)} aria-label="Their post link" />
               </div>
-              <button type="button" className="btn-quiet px-3 py-1.5" onClick={addCredit}>
-                Add credit line
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <select className="input w-auto bg-paper" value={style} onChange={(e) => setStyle(e.target.value as typeof style)} aria-label="Style">
+                  <option value="clean">Clean up only (keep wording)</option>
+                  <option value="rewrite">Rewrite in my own words (AI)</option>
+                  <option value="short">Make it short (AI)</option>
+                  <option value="hook">Strong hook + question (AI)</option>
+                </select>
+                <label className="flex items-center gap-1.5">
+                  <input type="checkbox" checked={credit} onChange={(e) => setCredit(e.target.checked)} /> Add credit line
+                </label>
+                <button type="button" className="btn-primary ml-auto px-3 py-1.5" onClick={cleanIt} disabled={cleaning || !srcText.trim()}>
+                  <Sparkles size={14} /> {cleaning ? "Cleaning…" : "Clean it"}
+                </button>
+              </div>
+              <p className="text-xs text-ink-faint">
+                Want this to happen automatically? Use the{" "}
+                <Link href="/app/templates" className="text-wire underline">
+                  “Creator you follow posts → clean & rewrite → your drafts”
+                </Link>{" "}
+                template.
+              </p>
             </div>
           )}
           <textarea
@@ -320,7 +383,7 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
                 <div className="min-w-0 flex-1 text-sm">
                   <div className="truncate font-medium">{file.name}</div>
                   <div className="text-xs text-ink-faint">
-                    {file.mime === "application/pdf" ? "PDF · shows as a swipeable carousel on LinkedIn" : "Picture"} · {kb(file.size)}
+                    {file.mime === "application/pdf" ? "PDF · shows as a swipeable carousel on LinkedIn" : file.mime.startsWith("image/") ? "Picture" : "From draft"}{file.size ? ` · ${kb(file.size)}` : ""}
                   </div>
                 </div>
                 <button type="button" aria-label="Remove file" className="p-1 text-ink-faint hover:text-bad" onClick={() => (setFile(null), setPreview(null))}>
@@ -395,8 +458,12 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
           </p>
         )}
 
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-ink-faint">Uses 1 credit per account.</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-ink-faint">{draftId ? "Editing a draft · " : ""}Uses 1 credit per account.</span>
+          <span className="ml-auto" />
+          <button type="button" className="btn-quiet" disabled={!canEdit || busy || uploading || (!text.trim() && !file && !link.trim())} onClick={(e) => submit(e as unknown as React.FormEvent, true)}>
+            <FilePen size={15} /> Save draft
+          </button>
           <button className="btn-primary" disabled={!canEdit || busy || uploading || !selected.length || blocking.length > 0 || (!text.trim() && !file && !link.trim())}>
             <Send size={15} />
             {busy ? (mode === "now" ? "Posting…" : "Scheduling…") : !selected.length ? "Pick an account above" : mode === "now" ? `Post to ${selected.length} account${selected.length === 1 ? "" : "s"}` : "Schedule post"}
@@ -406,6 +473,33 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
 
       {/* ── Queue + history ─────────────────────────────── */}
       <aside className="space-y-6">
+        {drafts.length > 0 && (
+          <section className="panel">
+            <h2 className="border-b border-line px-5 py-3 text-lg">Drafts to review</h2>
+            <ul className="divide-y divide-line">
+              {drafts.map((p) => (
+                <li key={p.id} className="space-y-2 px-5 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-ink-soft">Draft</span>
+                    <span className="text-xs text-ink-faint">{timeAgo(p.createdAt)}</span>
+                    {p.mediaId && <FileText size={13} className="text-ink-faint" aria-label="Has attachment" />}
+                    {canEdit && (
+                      <button className="ml-auto p-1 text-ink-faint hover:text-bad" aria-label="Delete draft" onClick={() => remove(p.id)}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="line-clamp-4 whitespace-pre-line text-sm">{p.text || p.link}</p>
+                  {canEdit && (
+                    <button className="text-sm font-medium text-wire underline" onClick={() => editDraft(p)}>
+                      Edit &amp; post
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <section className="panel">
           <h2 className="border-b border-line px-5 py-3 text-lg">Scheduled</h2>
           {scheduled.length === 0 ? (

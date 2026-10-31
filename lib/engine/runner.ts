@@ -11,11 +11,12 @@ import { ai } from "./modules/ai";
 import { social } from "./modules/social";
 import { google } from "./modules/google";
 import { business } from "./modules/business";
+import { publisher } from "./modules/publisher";
 import { connectionHelpers } from "./connections";
 import { StepError, type ModuleResult, type ModuleRunner } from "./types";
 import type { GraphNode, StepLog, Workflow } from "@/db/schema";
 
-export const RUNNERS: Record<string, ModuleRunner> = { ...core, ...apps, ...ai, ...social, ...google, ...business };
+export const RUNNERS: Record<string, ModuleRunner> = { ...core, ...apps, ...ai, ...social, ...google, ...business, ...publisher };
 // watch triggers: their output is the item the poller handed to this run
 for (const m of CATALOG) if (m.trigger && !RUNNERS[m.type]) RUNNERS[m.type] = async ({ scope }) => ({ output: scope.trigger });
 
