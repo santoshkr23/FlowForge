@@ -3,13 +3,16 @@ import { requireCtx, hasRole } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { Body, PageHead } from "@/components/app/PageHead";
 import { Connections } from "@/components/app/Connections";
-import { PROVIDERS, providerConfigured } from "@/lib/oauth/providers";
+import { headers } from "next/headers";
+import { PROVIDERS, providerConfigured, redirectUri } from "@/lib/oauth/providers";
 
 export const metadata = { title: "Connections" };
 
 export default async function ConnectionsPage(props: { searchParams: Promise<{ add?: string; connected?: string; error?: string }> }) {
   const searchParams = await props.searchParams;
   const ctx = await requireCtx();
+  const h = await headers();
+  const callbackUrl = redirectUri({ headers: h });
   const rows = await db
     .select({ id: schema.connections.id, app: schema.connections.app, name: schema.connections.name, createdAt: schema.connections.createdAt })
     .from(schema.connections)
@@ -30,6 +33,7 @@ export default async function ConnectionsPage(props: { searchParams: Promise<{ a
           openApp={searchParams.add}
           oauthReady={Object.keys(PROVIDERS).filter(providerConfigured)}
           flash={flash}
+          callbackUrl={callbackUrl}
         />
       </Body>
     </>

@@ -353,3 +353,19 @@ test("database URLs: Neon snippet and channel_binding are handled", async () => 
   assert.equal(normalizePgUrl(` DATABASE_URL="${plain}" `), clean);
   assert.throws(() => normalizePgUrl("psql -h host -U user"), /should start with postgresql/);
 });
+
+test("callback URL: uses APP_URL when real, otherwise the address the browser is on", async () => {
+  const { redirectUri } = await import("../lib/oauth/providers");
+  const req = { headers: new Headers({ host: "flowforge-lkpo.onrender.com", "x-forwarded-proto": "https" }) };
+  const saved = process.env.APP_URL;
+  try {
+    process.env.APP_URL = "https://my.example.com/";
+    assert.equal(redirectUri(req), "https://my.example.com/api/oauth/callback");
+    delete process.env.APP_URL;
+    assert.equal(redirectUri(req), "https://flowforge-lkpo.onrender.com/api/oauth/callback");
+    process.env.APP_URL = "http://localhost:3000";
+    assert.equal(redirectUri(req), "https://flowforge-lkpo.onrender.com/api/oauth/callback");
+  } finally {
+    process.env.APP_URL = saved;
+  }
+});

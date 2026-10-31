@@ -37,9 +37,9 @@ function toSecret(p: Provider, t: TokenResponse, prev?: OAuthSecret): OAuthSecre
   };
 }
 
-export async function exchangeCode(providerId: string, code: string, verifier?: string): Promise<OAuthSecret> {
+export async function exchangeCode(providerId: string, code: string, verifier?: string, redirect?: string): Promise<OAuthSecret> {
   const p = PROVIDERS[providerId];
-  const t = await tokenRequest(p, { grant_type: "authorization_code", code, redirect_uri: redirectUri(), ...(verifier ? { code_verifier: verifier } : {}) });
+  const t = await tokenRequest(p, { grant_type: "authorization_code", code, redirect_uri: redirect ?? redirectUri(), ...(verifier ? { code_verifier: verifier } : {}) });
   // Facebook gives short-lived (1–2 h) user tokens; swap for a 60-day one.
   if (p.id === "facebook") {
     const q = new URLSearchParams({ grant_type: "fb_exchange_token", client_id: clientId(p), client_secret: clientSecret(p), fb_exchange_token: t.access_token });

@@ -8,7 +8,7 @@ import { audit } from "@/lib/audit";
 
 const secret = () => new TextEncoder().encode(process.env.AUTH_SECRET ?? "dev-secret-change-me-dev-secret-change-me");
 
-type Pending = { state: string; verifier?: string; app: string; provider: string; orgId: string; userId: string; name: string };
+type Pending = { state: string; verifier?: string; redirect?: string; app: string; provider: string; orgId: string; userId: string; name: string };
 
 /** Providers redirect here after the user approves (or cancels). */
 export async function GET(req: Request) {
@@ -33,7 +33,7 @@ export async function GET(req: Request) {
   if (!code) return done("error=" + encodeURIComponent("The app didn't send a sign-in code."));
 
   try {
-    const s = await exchangeCode(p.provider, code, p.verifier);
+    const s = await exchangeCode(p.provider, code, p.verifier, p.redirect);
     const name = s.account ? `${p.name} (${s.account})` : p.name;
     const [c] = await db.insert(schema.connections).values({ orgId: p.orgId, app: p.app, name, secret: encryptJson(s) }).returning();
     await audit(p.orgId, p.userId, "connection.created", c.id, { app: p.app, name });

@@ -24,9 +24,10 @@ export async function GET(req: Request) {
   const p = PROVIDERS[providerId];
 
   const state = b64url(randomBytes(18));
+  const redirect = redirectUri(req);
   const verifier = p.pkce ? b64url(randomBytes(48)) : undefined;
   const name = (url.searchParams.get("name") ?? def.name).slice(0, 80);
-  const cookie = await new SignJWT({ state, verifier, app, provider: p.id, orgId: ctx.org.id, userId: ctx.user.id, name })
+  const cookie = await new SignJWT({ state, verifier, redirect, app, provider: p.id, orgId: ctx.org.id, userId: ctx.user.id, name })
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("15m")
     .sign(secret());
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
   const q = new URLSearchParams({
     response_type: "code",
     client_id: clientId(p),
-    redirect_uri: redirectUri(),
+    redirect_uri: redirect,
     scope: p.scopes.join(p.scopeSeparator ?? " "),
     state,
     ...(p.extraAuthParams ?? {}),

@@ -137,5 +137,22 @@ export const PROVIDERS: Record<string, Provider> = {
 export const clientId = (p: Provider) => process.env[`${p.id.toUpperCase()}_CLIENT_ID`] ?? "";
 export const clientSecret = (p: Provider) => process.env[`${p.id.toUpperCase()}_CLIENT_SECRET`] ?? "";
 export const providerConfigured = (id: string) => !!PROVIDERS[id] && !!clientId(PROVIDERS[id]) && !!clientSecret(PROVIDERS[id]);
-export const redirectUri = () => `${(process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/api/oauth/callback`;
+/** Public address of the site as seen by the browser (Render etc. pass it in forwarded headers). */
+export function originFromHeaders(h: { get(name: string): string | null }, fallbackUrl?: string): string {
+  const fb = fallbackUrl ? new URL(fallbackUrl) : null;
+  const host = (h.get("x-forwarded-host") ?? h.get("host") ?? fb?.host ?? "localhost:3000").split(",")[0].trim();
+  const proto = (h.get("x-forwarded-proto") ?? fb?.protocol.replace(":", "") ?? "http").split(",")[0].trim();
+  return `${proto}://${host}`;
+}
+
+/** Site base URL: APP_URL if it's set to a real address, otherwise the address the request came in on. */
+type ReqLike = { headers: { get(name: string): string | null }; url?: string };
+
+export function siteUrl(req?: ReqLike): string {
+  const env = (process.env.APP_URL ?? "").trim().replace(/\/+$/, "");
+  if (env && !/\/\/(localhost|127\.0\.0\.1)(:|$)/.test(env)) return env;
+  return req ? originFromHeaders(req.headers, req.url) : env || "http://localhost:3000";
+}
+
+export const redirectUri = (req?: ReqLike) => `${siteUrl(req)}/api/oauth/callback`;
 export const metaGraph = META;

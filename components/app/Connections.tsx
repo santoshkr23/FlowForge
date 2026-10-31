@@ -12,7 +12,7 @@ const ICON_APP: Record<string, string> = { google: "sheets", smtp: "mail", googl
 const colorFor = (app: string) => CATALOG.find((m) => m.app === (ICON_APP[app] ?? app) || m.fields.some((f) => f.type === "connection" && f.app?.split(",")[0] === app))?.color;
 const iconFor = (app: string) => ICON_APP[app] ?? app;
 
-export function Connections(props: { initial: Row[]; canEdit: boolean; openApp?: string; oauthReady: string[]; flash?: { ok: boolean; text: string } }) {
+export function Connections(props: { initial: Row[]; canEdit: boolean; openApp?: string; oauthReady: string[]; flash?: { ok: boolean; text: string }; callbackUrl: string }) {
   const { canEdit, oauthReady } = props;
   const [rows, setRows] = useState(props.initial);
   const [app, setApp] = useState<string | null>(props.openApp && APPS[props.openApp] ? props.openApp : null);
@@ -129,6 +129,19 @@ export function Connections(props: { initial: Row[]; canEdit: boolean; openApp?:
                   </label>
                   <input id="c-name" className="input" value={name} onChange={(e) => setName(e.target.value)} required />
                 </div>
+
+                {def.oauth && (
+                  <div className="rounded-lg border border-line p-3 text-xs">
+                    <div className="font-medium text-ink">Callback / redirect URL</div>
+                    <p className="mt-0.5 text-ink-soft">Register exactly this in the {def.name.replace(/ \(.*\)$/, "")} developer app (site owner only).</p>
+                    <div className="mt-1.5 flex gap-2">
+                      <code className="min-w-0 flex-1 break-all rounded bg-canvas px-2 py-1 font-mono">{props.callbackUrl}</code>
+                      <button type="button" className="btn-quiet shrink-0 px-2 py-1 text-xs" onClick={() => navigator.clipboard.writeText(props.callbackUrl)}>
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {def.oauth &&
                   (canOAuth ? (
