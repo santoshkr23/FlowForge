@@ -8,6 +8,7 @@ import IORedis from "ioredis";
 import { QUEUE_NAME } from "../lib/engine/queue";
 import { runExecution } from "../lib/engine/runner";
 import { tickScheduler } from "../lib/engine/scheduler";
+import { tickPosts } from "../lib/social/publish";
 
 const url = process.env.REDIS_URL;
 if (!url) {
@@ -34,6 +35,9 @@ setInterval(() => {
   tickScheduler()
     .then((n) => n && console.log(`⏰ fired ${n} scheduled run(s)`))
     .catch((e) => console.error("scheduler", e));
+  tickPosts()
+    .then((n) => n && console.log(`📣 published ${n} scheduled post(s)`))
+    .catch((e) => console.error("social posts", e));
 }, 30_000);
 
 process.on("SIGTERM", async () => {

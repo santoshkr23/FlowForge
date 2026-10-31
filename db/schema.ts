@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, customType, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createId } from "../lib/id";
 
 export const roleEnum = pgEnum("role", ["OWNER", "ADMIN", "BUILDER", "VIEWER"]);
@@ -195,3 +195,51 @@ export type Org = typeof orgs.$inferSelect;
 export type Workflow = typeof workflows.$inferSelect;
 export type Execution = typeof executions.$inferSelect;
 export type Connection = typeof connections.$inferSelect;
+
+// ───────── Social publisher ─────────
+const bytea = customType<{ data: Buffer; driverData: Buffer | Uint8Array }>({
+  dataType: () => "bytea",
+  fromDriver: (v) => Buffer.from(v as Uint8Array),
+});
+
+/** Files uploaded for posts (images, PDFs). Served publicly at /api/media/{id}/{token}/{name} so platforms can fetch them. */
+export const media = pgTable(
+  "media",
+  {
+    id: id(),
+    orgId: text("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    name: text("name").notNull(),
+    mime: text("mime").notNull(),
+    size: integer("size").notNull(),
+    data: bytea("data").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("media_org").on(t.orgId)],
+);
+
+export type PostResult = { target: string; app: string; account?: string; ok: boolean; url?: string; error?: string; note?: string; at: string };
+
+export const posts = pgTable(
+  "posts",
+  {
+    id: id(),
+    orgId: text("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+    createdById: text("created_by_id"),
+    text: text("text").notNull().default(""),
+    link: text("link"),
+    mediaId: text("media_id").references(() => media.id, { onDelete: "set null" }),
+    mediaTitle: text("media_title"),
+    targets: jsonb("targets").$type<string[]>().notNull(), // "connId" or "connId:instagram"
+    baseUrl: text("base_url"), // public site address at creation, for media links
+    status: text("status").notNull().default("scheduled"), // scheduled | posting | posted | partial | failed
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    results: jsonb("results").$type<PostResult[]>(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("posts_org_time").on(t.orgId, t.createdAt), index("posts_due").on(t.status, t.scheduledAt)],
+);
+
+export type Post = typeof posts.$inferSelect;
+export type Media = typeof media.$inferSelect;

@@ -73,5 +73,8 @@ export async function tickScheduler(now = new Date()) {
 export function startInlineScheduler(intervalMs = 30_000) {
   const g = globalThis as unknown as { __ffSched?: NodeJS.Timeout };
   if (g.__ffSched) return;
-  g.__ffSched = setInterval(() => tickScheduler().catch((e) => console.error("scheduler", e)), intervalMs);
+  g.__ffSched = setInterval(() => {
+    tickScheduler().catch((e) => console.error("scheduler", e));
+    import("../social/publish").then((m) => m.tickPosts()).catch((e) => console.error("social posts", e));
+  }, intervalMs);
 }

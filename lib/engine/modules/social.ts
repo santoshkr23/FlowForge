@@ -10,16 +10,16 @@ const graph = (path: string) => `https://graph.facebook.com/${metaGraph()}${path
 // ── Meta (Facebook + Instagram) ─────────────────────────────────────────────
 type FbPage = { id: string; name?: string; access_token?: string; instagram_business_account?: { id: string } };
 
-async function fbGet<T>(path: string, token: string, fields?: string): Promise<T> {
+export async function fbGet<T>(path: string, token: string, fields?: string): Promise<T> {
   const q = new URLSearchParams({ access_token: token, ...(fields ? { fields } : {}) });
   return apiCall<T>(`${graph(path)}${path.includes("?") ? "&" : "?"}${q}`);
 }
-async function fbPost<T>(path: string, token: string, params: Record<string, string>): Promise<T> {
+export async function fbPost<T>(path: string, token: string, params: Record<string, string>): Promise<T> {
   return apiCall<T>(graph(path), { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ ...params, access_token: token }).toString() });
 }
 
 /** Resolve a Page and its Page token from a user token (OAuth) or accept a pasted Page token. */
-async function fbPage(token: string, pageId?: string): Promise<{ id: string; token: string; igId?: string }> {
+export async function fbPage(token: string, pageId?: string): Promise<{ id: string; token: string; igId?: string }> {
   try {
     const { data } = await fbGet<{ data: FbPage[] }>("/me/accounts", token, "id,name,access_token,instagram_business_account");
     if (data?.length) {
@@ -35,7 +35,7 @@ async function fbPage(token: string, pageId?: string): Promise<{ id: string; tok
   return { id: me.id, token, igId: me.instagram_business_account?.id };
 }
 
-async function igWaitReady(containerId: string, token: string) {
+export async function igWaitReady(containerId: string, token: string) {
   for (let i = 0; i < 60; i++) {
     const st = await fbGet<{ status_code?: string; status?: string }>(`/${containerId}`, token, "status_code,status");
     if (st.status_code === "FINISHED" || st.status_code === undefined) return;
@@ -47,10 +47,22 @@ async function igWaitReady(containerId: string, token: string) {
 
 // ── LinkedIn ────────────────────────────────────────────────────────────────
 /** LinkedIn "little text": these characters must be escaped or the post gets cut off. */
-const liEscape = (t: string) => t.replace(/[\\|{}@[\]()<>#*_~]/g, (c) => `\\${c}`);
+export const liEscape = (t: string) => t.replace(/[\\|{}@[\]()<>#*_~]/g, (c) => `\\${c}`);
+
+/** Escape LinkedIn "little text" but keep #hashtags clickable. */
+export function liText(t: string) {
+  let out = "";
+  let last = 0;
+  for (const m of t.matchAll(/(^|[^\p{L}\p{N}_&])#([\p{L}\p{N}_]+)/gu)) {
+    const start = m.index! + m[1].length;
+    out += liEscape(t.slice(last, start)) + `{hashtag|\\#|${m[2]}}`;
+    last = start + 1 + m[2].length;
+  }
+  return out + liEscape(t.slice(last));
+}
 
 // ── Bluesky ─────────────────────────────────────────────────────────────────
-function bskyLinkFacets(text: string) {
+export function bskyLinkFacets(text: string) {
   const facets: unknown[] = [];
   const re = /https?:\/\/[^\s)]+/g;
   let m: RegExpExecArray | null;
@@ -140,7 +152,7 @@ export const social: Record<string, ModuleRunner> = {
         headers: { authorization: `Bearer ${accessToken}`, "linkedin-version": version, "x-restli-protocol-version": "2.0.0" },
         json: {
           author,
-          commentary: liEscape(s(config.text)),
+          commentary: liText(s(config.text)),
           visibility: "PUBLIC",
           distribution: { feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: [] },
           lifecycleState: "PUBLISHED",

@@ -6,6 +6,8 @@ import { APPS, CATALOG } from "@/lib/engine/catalog";
 import { api } from "@/lib/client";
 import { timeAgo } from "@/lib/format";
 
+const SOCIAL = ["linkedin", "facebook", "twitter", "bluesky", "mastodon", "discord", "slack"];
+
 type Row = { id: string; app: string; name: string; createdAt: string };
 
 const ICON_APP: Record<string, string> = { google: "sheets", smtp: "mail", google_oauth: "google", http_auth: "globe" };
@@ -97,6 +99,12 @@ export function Connections(props: { initial: Row[]; canEdit: boolean; openApp?:
                 </li>
               ))}
             </ul>
+          )}
+          {rows.some((r) => SOCIAL.includes(r.app)) && (
+            <a href="/app/social" className="panel mt-3 flex items-center justify-between px-5 py-3 text-sm hover:border-wire">
+              <span>Write and schedule posts for your connected social accounts</span>
+              <span className="font-medium text-wire">Open Social →</span>
+            </a>
           )}
         </section>
 

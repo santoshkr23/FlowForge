@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, CreditCard, KeyRound, LayoutGrid, LayoutTemplate, Plug, Shield, Users, Workflow } from "lucide-react";
+import { Activity, CreditCard, KeyRound, LayoutGrid, LayoutTemplate, Megaphone, Plug, Shield, Users, Workflow } from "lucide-react";
 import { Logo } from "../Logo";
 import { api } from "@/lib/client";
 
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/app/workflows", label: "Workflows", icon: Workflow },
   { href: "/app/executions", label: "Run history", icon: Activity },
   { href: "/app/templates", label: "Templates", icon: LayoutTemplate },
+  { href: "/app/social", label: "Social", icon: Megaphone },
   { href: "/app/connections", label: "Connections", icon: Plug },
   { href: "/app/team", label: "Team", icon: Users },
   { href: "/app/billing", label: "Billing", icon: CreditCard },

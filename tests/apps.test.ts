@@ -137,7 +137,7 @@ test("LinkedIn: escapes little-text, sends version header, reads id from header"
   assert.ok(c.headers["linkedin-version"]);
   const b = JSON.parse(c.body);
   assert.equal(b.author, "urn:li:person:abc");
-  assert.equal(b.commentary, "Launch \\(beta\\) \\#automation");
+  assert.equal(b.commentary, "Launch \\(beta\\) {hashtag|\\#|automation}");
   assert.equal((r.output as { id: string }).id, "urn:li:share:7");
 });
 

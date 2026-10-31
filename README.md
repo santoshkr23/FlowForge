@@ -107,6 +107,18 @@ Tools exposed: `list_workflows`, `run_workflow`, `get_execution`.
 
 That's it — it appears in the builder palette, the landing page and the AI drafter automatically.
 
+## Social publisher (/app/social)
+
+Write one post and send it to every connected social account, now or at a set time.
+
+- **Accounts**: anything connected on the Connections page — LinkedIn (your profile), Facebook Page + its linked Instagram, X, Bluesky, Mastodon, Discord and Slack webhooks.
+- **Attachments**: a picture (JPG/PNG/GIF/WebP) or a PDF, up to 20 MB. On LinkedIn a PDF becomes a swipeable document carousel (Documents API); pictures use the Images API. Where a platform can't take the file (PDF on Facebook/X/Slack) a download link is added instead. Instagram needs a picture.
+- **Hashtags**: "Suggest hashtags" uses your AI key if set (OPENAI_API_KEY / ANTHROPIC_API_KEY), otherwise keywords from the post plus popular tags for its topics. LinkedIn hashtags are sent in LinkedIn's clickable format.
+- **Scheduling**: the built-in scheduler (or the worker) checks every 30 s. 1 credit per account per post.
+- **Reposting with credit**: LinkedIn's API doesn't let apps read other people's posts or profiles, so download their PDF/picture, attach it, and use "Repost someone's post" to add a credit line.
+- **LinkedIn company pages** need LinkedIn's Community Management API (scope `w_organization_social`), which LinkedIn approves separately; personal profiles work with "Share on LinkedIn".
+- Files are stored in the database and served at an unguessable public link so Facebook/Instagram can fetch them — set APP_URL to your public address.
+
 ## One-click app sign-in ("Connect with Google / Facebook / X …")
 
 Customers connect most apps by pasting a key. For the big platforms they expect a **Connect with …** button, and that button only works after **you** (the platform owner) register a free developer app with each provider. Until you do, the button is hidden and the app shows a short note instead.
