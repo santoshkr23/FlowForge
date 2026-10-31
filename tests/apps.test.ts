@@ -369,3 +369,18 @@ test("callback URL: uses APP_URL when real, otherwise the address the browser is
     process.env.APP_URL = saved;
   }
 });
+
+test("ENCRYPTION_KEY tolerates spaces, line breaks and quotes", async () => {
+  const { encryptJson, decryptJson } = await import("../lib/crypto");
+  const saved = process.env.ENCRYPTION_KEY;
+  try {
+    process.env.ENCRYPTION_KEY = ` "${"b".repeat(64)}"\n`;
+    assert.deepEqual(decryptJson(encryptJson({ a: 1 })), { a: 1 });
+    process.env.ENCRYPTION_KEY = "short";
+    assert.throws(() => encryptJson({}), /exactly 64 characters.*it has 5/);
+    process.env.ENCRYPTION_KEY = "";
+    assert.throws(() => encryptJson({}), /not set on the server/);
+  } finally {
+    process.env.ENCRYPTION_KEY = saved;
+  }
+});

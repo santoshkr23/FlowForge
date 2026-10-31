@@ -1,8 +1,16 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 function key() {
-  const hex = process.env.ENCRYPTION_KEY ?? "";
-  if (!/^[0-9a-f]{64}$/i.test(hex)) throw new Error("ENCRYPTION_KEY must be 64 hex characters");
+  const raw = process.env.ENCRYPTION_KEY;
+  if (!raw || !raw.trim()) throw new Error("ENCRYPTION_KEY is not set on the server. Add it in your host's environment settings and redeploy.");
+  // tolerate stray spaces, line breaks and quotes from copy-paste
+  const hex = raw.trim().replace(/^["']|["']$/g, "").trim();
+  if (!/^[0-9a-f]{64}$/i.test(hex)) {
+    const bad = hex.replace(/[0-9a-f]/gi, "").length;
+    throw new Error(
+      `ENCRYPTION_KEY must be exactly 64 characters using only 0-9 and a-f (it has ${hex.length}${bad ? `, including ${bad} other character${bad > 1 ? "s" : ""}` : ""}). Generate one with: openssl rand -hex 32`,
+    );
+  }
   return Buffer.from(hex, "hex");
 }
 
