@@ -480,3 +480,14 @@ test("feed made from a single post (hashtag/sign-up links only) is rejected with
   const r = await checkWatch(w);
   assert.match(r.error ?? "", /single post/);
 });
+
+test("workflow mapping mistakes are tolerated: ids in the URL field attach the files; ids/URLs in the text are dropped", async () => {
+  const ctx = (config: Record<string, unknown>) => ({ config, orgId, log: () => {} }) as never;
+  const a = await file("p1.jpg", "image/jpeg", "A");
+  const b = await file("p2.jpg", "image/jpeg", "B");
+  const d = (await publisher["social.draft"](ctx({ text: "Hi", fileUrl: [a.id, b.id], mode: "draft" }))).output as { postId: string };
+  const [row] = await db.select().from(schema.posts).where(eq(schema.posts.id, d.postId));
+  assert.deepEqual(row.mediaIds, [a.id, b.id]);
+  const r = (await publisher["social.rewrite"](ctx({ text: `Real post text${a.id},${b.id}["https://media.licdn.com/dms/image/v2/X/feedshare-shrink_800/0/1"]`, style: "clean", credit: "false", maxTags: 0 }))).output as { text: string };
+  assert.equal(r.text, "Real post text");
+});

@@ -1,4 +1,5 @@
 /** Workflow steps for the Social publisher: clean/rewrite a post, then save it as a draft or post it. */
+import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "../../db";
 import { siteUrl } from "../../oauth/providers";
 import { rewritePost, type RewriteStyle, type TagMode } from "../../social/rewrite";
@@ -32,7 +33,12 @@ export const publisher: Record<string, ModuleRunner> = {
   },
 
   "social.rewrite": async ({ config }) => {
-    const text = s(config.text);
+    // drop file ids / picture addresses that got mapped into the text by mistake
+    const text = s(config.text)
+      .replace(/\[?"?https:\/\/media\.licdn\.com\/[^\s",\]]+"?,?\]?/g, "")
+      .replace(/(?=[a-z0-9]{0,19}\d)[a-z0-9]{20}(?=[,\s\]"]|$),?/g, "")
+      .replace(/\[\s*\]/g, "")
+      .trim();
     if (!text) throw new StepError("There's no post text to clean");
     const r = await rewritePost(text, {
       style: (s(config.style) || "clean") as RewriteStyle,
@@ -51,10 +57,20 @@ export const publisher: Record<string, ModuleRunner> = {
     const text = s(config.text);
     const link = s(config.link) || null;
     if (!text && !link) throw new StepError("The post is empty");
-    const many = Array.isArray(config.mediaIds) ? (config.mediaIds as unknown[]).map(String).filter(Boolean) : s(config.mediaIds) ? s(config.mediaIds).split(",").map((x) => x.trim()).filter(Boolean) : [];
-    let mediaId: string | null = many[0] ?? (s(config.mediaId) || null);
-    if (!mediaId && s(config.fileUrl)) {
-      const f = await downloadFile(s(config.fileUrl), 20 * 1024 * 1024);
+    const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : s(v) ? s(v).split(",") : []).map((x) => x.trim()).filter(Boolean);
+    // accept file ids wherever they were mapped (mediaIds, mediaId or even the URL field)
+    const isId = (x: string) => /^[a-z0-9]{16,32}$/.test(x);
+    const fileField = list(config.fileUrl);
+    let many = [...list(config.mediaIds), ...list(config.mediaId), ...fileField.filter(isId)].filter(isId);
+    many = [...new Set(many)];
+    if (many.length) {
+      const own = await db.select({ id: schema.media.id }).from(schema.media).where(and(inArray(schema.media.id, many), eq(schema.media.orgId, orgId)));
+      many = many.filter((id) => own.some((o) => o.id === id));
+    }
+    const fileUrl = fileField.find((x) => /^https?:\/\//i.test(x)) ?? "";
+    let mediaId: string | null = many[0] ?? null;
+    if (!mediaId && fileUrl) {
+      const f = await downloadFile(fileUrl, 20 * 1024 * 1024);
       const mime = f.contentType.split(";")[0].trim();
       if (!/^(image\/(jpeg|png|gif|webp)|application\/pdf)$/.test(mime)) throw new StepError(`Only pictures and PDFs can be attached (got ${mime})`);
       const [m] = await db

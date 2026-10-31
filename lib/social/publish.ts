@@ -96,6 +96,7 @@ async function linkedin(j: Job): Promise<Out> {
   }
   if (content) text = join(post.text, post.link);
   else if (post.link) content = { article: { source: post.link, title: post.mediaTitle || post.link } };
+  if ([...text].length > 3000) throw new StepError(`The post is ${[...text].length} characters — LinkedIn allows 3,000. Shorten it (in a workflow, the post text should be just {{steps.clean.text}}).`);
 
   const r = await apiRaw("https://api.linkedin.com/rest/posts", {
     method: "POST",
