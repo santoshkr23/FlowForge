@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
-import { CalendarClock, FilePen, FileText, Hash, ImageIcon, Paperclip, Repeat2, Send, Sparkles, Trash2, X as Close } from "lucide-react";
+import { CalendarClock, Download, FilePen, FileText, Hash, ImageIcon, Paperclip, Repeat2, Send, Sparkles, Trash2, X as Close } from "lucide-react";
 import { AppIcon } from "../AppIcon";
 import { api } from "@/lib/client";
 import { timeAgo } from "@/lib/format";
@@ -31,6 +31,7 @@ const STATUS: Record<string, [string, string]> = {
   posted: ["Posted", "bg-ok-tint text-ok"],
   partial: ["Partly posted", "bg-spark-tint text-ink"],
   failed: ["Failed", "bg-bad-tint text-bad"],
+  deleted: ["Deleted", "bg-canvas text-ink-soft"],
 };
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -59,6 +60,14 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
   const [credit, setCredit] = useState(true);
   const [cleaning, setCleaning] = useState(false);
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [importUrl, setImportUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const liAccounts = accounts.filter((a) => a.channel === "linkedin");
+  const [cAcc, setCAcc] = useState(liAccounts[0]?.connectionId ?? "");
+  const [cUrl, setCUrl] = useState("");
+  const [cText, setCText] = useState("");
+  const [cMsg, setCMsg] = useState<{ ok: boolean; text: string; url?: string } | null>(null);
+  const [cBusy, setCBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -150,6 +159,60 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
       setMsg({ ok: false, text: (e as Error).message });
     } finally {
       setCleaning(false);
+    }
+  }
+
+  async function importLink() {
+    if (!importUrl.trim()) return;
+    setImporting(true);
+    setMsg(null);
+    try {
+      const r = await api<{ text: string; hashtags: string[]; source: string; media: Upload | null; title: string; notes: string[]; post: { author?: string; document?: unknown; images: string[] } }>(
+        "/api/posts/import",
+        { body: { url: importUrl, style, credit } },
+      );
+      setText(r.text);
+      setTags(r.hashtags);
+      setTagSource(null);
+      setFile(r.media);
+      setPreview(r.media?.mime.startsWith("image/") ? r.media.url : null);
+      setTitle(r.title || "");
+      setSrcName(r.post.author ?? "");
+      if (!selected.length) setSelected(accounts.filter((a) => a.channel === "linkedin").map((a) => a.target));
+      const got = [r.media ? (r.media.mime === "application/pdf" ? "the PDF" : "the picture") : null, "the text"].filter(Boolean).join(" and ");
+      setMsg({ ok: true, text: [`Fetched ${got}${r.post.author ? ` from ${r.post.author}'s post` : ""} and cleaned it. Check it, then post.`, ...r.notes].join(" ") });
+      setImportUrl("");
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function sendComment(e: React.FormEvent) {
+    e.preventDefault();
+    setCBusy(true);
+    setCMsg(null);
+    try {
+      const r = await api<{ url: string }>("/api/social/comment", { body: { connectionId: cAcc, postUrl: cUrl, text: cText } });
+      setCMsg({ ok: true, text: "Comment posted.", url: r.url });
+      setCText("");
+    } catch (err) {
+      setCMsg({ ok: false, text: (err as Error).message });
+    } finally {
+      setCBusy(false);
+    }
+  }
+
+  async function unpublish(id: string) {
+    if (!confirm("Delete this post from LinkedIn / X? This can't be undone.")) return;
+    try {
+      const r = await api<{ post: PostRow; out: { account?: string; ok: boolean; error?: string }[] }>(`/api/posts/${id}/unpublish`, { body: {} });
+      setPosts((ps) => ps.map((p) => (p.id === id ? { ...p, ...r.post, createdAt: p.createdAt } : p)));
+      const bad = r.out.filter((o) => !o.ok);
+      if (bad.length) alert(bad.map((o) => `${o.account}: ${o.error}`).join("\n"));
+    } catch (e) {
+      alert((e as Error).message);
     }
   }
 
@@ -262,6 +325,37 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
               })}
             </div>
           )}
+        </div>
+
+        <div className="rounded-lg border border-wire/30 bg-wire/5 p-3">
+          <label className="label flex items-center gap-1.5" htmlFor="s-import">
+            <Download size={14} /> Import a post from its link
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <input
+              id="s-import"
+              className="input min-w-0 flex-1 bg-paper"
+              placeholder="Paste a LinkedIn post link (linkedin.com/posts/… or lnkd.in/…)"
+              value={importUrl}
+              onChange={(e) => setImportUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  importLink();
+                }
+              }}
+            />
+            <button type="button" className="btn-primary" onClick={importLink} disabled={importing || !importUrl.trim()}>
+              {importing ? "Fetching…" : "Fetch & clean"}
+            </button>
+          </div>
+          <p className="mt-1.5 text-xs text-ink-faint">
+            Gets the text and downloads the PDF carousel or picture, removes clutter, adds credit and hashtags. Public posts only. To do it without opening FlowForge, use the{" "}
+            <Link href="/app/templates" className="text-wire underline">
+              “Share a post link → … → post on my LinkedIn”
+            </Link>{" "}
+            template.
+          </p>
         </div>
 
         <div>
@@ -500,6 +594,36 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
             </ul>
           </section>
         )}
+        {liAccounts.length > 0 && canEdit && (
+          <form onSubmit={sendComment} className="panel space-y-2 p-5">
+            <h2 className="text-lg">Comment / reply on LinkedIn</h2>
+            <p className="text-xs text-ink-faint">Paste any post's link (⋯ → Copy link to post) and comment on it as yourself.</p>
+            {liAccounts.length > 1 && (
+              <select className="input" value={cAcc} onChange={(e) => setCAcc(e.target.value)} aria-label="LinkedIn account">
+                {liAccounts.map((a) => (
+                  <option key={a.connectionId} value={a.connectionId}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <input className="input" placeholder="https://www.linkedin.com/posts/…" value={cUrl} onChange={(e) => setCUrl(e.target.value)} aria-label="Post link" />
+            <textarea className="input" rows={3} placeholder="Great insight — thanks for sharing!" value={cText} onChange={(e) => setCText(e.target.value)} aria-label="Comment" />
+            {cMsg && (
+              <p className={`text-sm ${cMsg.ok ? "text-ok" : "text-bad"}`}>
+                {cMsg.text}{" "}
+                {cMsg.url && (
+                  <a className="underline" href={cMsg.url} target="_blank" rel="noreferrer">
+                    Open post
+                  </a>
+                )}
+              </p>
+            )}
+            <button className="btn-primary w-full" disabled={cBusy || !cAcc || !cUrl.trim() || !cText.trim()}>
+              {cBusy ? "Posting…" : "Post comment"}
+            </button>
+          </form>
+        )}
         <section className="panel">
           <h2 className="border-b border-line px-5 py-3 text-lg">Scheduled</h2>
           {scheduled.length === 0 ? (
@@ -519,7 +643,7 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
           ) : (
             <ul className="divide-y divide-line">
               {history.map((p) => (
-                <PostItem key={p.id} p={p} nameOf={nameOf} onRemove={canEdit ? remove : undefined} />
+                <PostItem key={p.id} p={p} nameOf={nameOf} onRemove={canEdit ? remove : undefined} onUnpublish={canEdit ? unpublish : undefined} />
               ))}
             </ul>
           )}
@@ -529,7 +653,8 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
   );
 }
 
-function PostItem({ p, nameOf, onRemove }: { p: PostRow; nameOf: (t: string) => Account | undefined; onRemove?: (id: string) => void }) {
+function PostItem({ p, nameOf, onRemove, onUnpublish }: { p: PostRow; nameOf: (t: string) => Account | undefined; onRemove?: (id: string) => void; onUnpublish?: (id: string) => void }) {
+  const canUnpublish = !!onUnpublish && (p.results ?? []).some((r) => r.ok && r.url && (r.app === "linkedin" || r.app === "x"));
   const [label, cls] = STATUS[p.status] ?? [p.status, "bg-canvas text-ink-soft"];
   return (
     <li className="space-y-2 px-5 py-3">
@@ -546,6 +671,11 @@ function PostItem({ p, nameOf, onRemove }: { p: PostRow; nameOf: (t: string) => 
         )}
       </div>
       <p className="line-clamp-3 whitespace-pre-line text-sm">{p.text || p.mediaTitle || p.link}</p>
+      {canUnpublish && (
+        <button className="text-xs text-bad underline" onClick={() => onUnpublish!(p.id)}>
+          Delete from LinkedIn / X
+        </button>
+      )}
       <ul className="space-y-1">
         {(p.results ?? p.targets.map((t) => ({ target: t, app: nameOf(t)?.channel ?? "", account: nameOf(t)?.name, ok: true, pending: true }) as Result & { pending?: boolean })).map((r) => {
           const ch = (r.app as Channel) in CHANNELS ? (r.app as Channel) : null;

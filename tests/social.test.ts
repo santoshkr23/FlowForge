@@ -1,6 +1,7 @@
 // Social publisher: LinkedIn PDF/picture upload flow, Facebook/Instagram via public media links,
 // character limits, scheduling, credits and hashtag suggestions. External APIs are faked.
 process.env.APP_URL = "https://ff.test";
+process.env.ALLOW_PRIVATE_NETWORK = "1";
 delete process.env.OPENAI_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
 
@@ -16,7 +17,7 @@ import { keywordHashtags, suggestHashtags } from "../lib/social/hashtags";
 import { liText } from "../lib/engine/modules/social";
 
 type Call = { method: string; url: string; headers: Record<string, string>; body: string; raw: unknown };
-type Route = { match: RegExp; method?: string; reply: (c: Call) => { status?: number; json?: unknown; headers?: Record<string, string> } };
+type Route = { match: RegExp; method?: string; reply: (c: Call) => { status?: number; json?: unknown; text?: string; headers?: Record<string, string> } };
 let calls: Call[] = [];
 let routes: Route[] = [];
 globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
@@ -30,7 +31,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => 
   const r = routes.find((x) => x.match.test(url) && (!x.method || x.method === method));
   if (!r) return new Response(JSON.stringify({ error: `no route for ${method} ${url}` }), { status: 599 });
   const out = r.reply(call);
-  return new Response(out.json === undefined ? null : JSON.stringify(out.json), { status: out.status ?? 200, headers: { "content-type": "application/json", ...(out.headers ?? {}) } });
+  return new Response(out.text ?? (out.json === undefined ? null : JSON.stringify(out.json)), { status: out.status ?? 200, headers: { "content-type": out.text !== undefined ? "text/html" : "application/json", ...(out.headers ?? {}) } });
 }) as typeof fetch;
 const on = (method: string, match: RegExp, reply: Route["reply"]) => routes.push({ method, match, reply });
 const find = (re: RegExp, method?: string) => calls.find((c) => re.test(c.url) && (!method || c.method === method));
@@ -290,4 +291,87 @@ test("reshare templates only use real steps", () => {
     assert.ok(t, id);
     for (const n of t.graph.nodes) assert.ok(CATALOG_BY_TYPE[n.type], `${id}: ${n.type}`);
   }
+});
+
+// ── import from a post link ─────────────────────────────────────────────────
+import { fetchPost, parseLinkedIn, saveImportedFile } from "../lib/social/importer";
+
+const docCfg = JSON.stringify({ doc: { title: "SQL Roadmap 2026", totalPageCount: 12, transcribedDocumentUrl: "https://media.licdn.com/dms/document/media/D4D10AQ/feedshare-document-pdf-analyzed/0/123?e=1" } }).replace(/"/g, "&quot;");
+const LI_HTML = `<!doctype html><html><head><title>Priya Sharma on LinkedIn: Most people learn SQL the wrong way</title>
+<meta property="og:title" content="Priya Sharma on LinkedIn: Most people learn SQL the wrong way">
+<meta property="og:description" content="Most people learn SQL the wrong way...">
+<meta property="og:image" content="https://media.licdn.com/dms/image/v2/C4D03AQ/profile-displayphoto-shrink_200_200/0/1">
+<script type="application/ld+json">{"@context":"http://schema.org","@type":"SocialMediaPosting","author":{"@type":"Person","name":"Priya Sharma","url":"https://in.linkedin.com/in/priya-sharma"},"articleBody":"Most people learn SQL the wrong way.\\n\\nHere&#39;s the order that worked for me:\\n1. SELECT &amp; WHERE\\n2. JOINs\\n\\n♻️ Repost to help your network\\n#SQL #DataAnalytics"}</script>
+</head><body>
+<iframe data-native-document-config="${docCfg}" title="SQL Roadmap 2026"></iframe>
+<img data-delayed-url="https://media.licdn.com/dms/image/v2/C4D03AQ/profile-displayphoto-shrink_100_100/0/2" alt="">
+</body></html>`;
+
+test("parseLinkedIn reads author, full text and the PDF carousel from a public post page", () => {
+  const p = parseLinkedIn(LI_HTML, "https://www.linkedin.com/posts/priya-sharma_sql-activity-1");
+  assert.equal(p.author, "Priya Sharma");
+  assert.equal(p.authorUrl, "https://in.linkedin.com/in/priya-sharma");
+  assert.match(p.text, /^Most people learn SQL the wrong way\.\n\nHere's the order/);
+  assert.match(p.text, /SELECT & WHERE/);
+  assert.equal(p.document?.title, "SQL Roadmap 2026");
+  assert.equal(p.document?.pages, 12);
+  assert.match(p.document!.url, /feedshare-document-pdf-analyzed/);
+  assert.deepEqual(p.images, []); // profile photos are not post pictures
+});
+
+test("lnkd.in short link → post page → PDF saved; sign-in wall gives a clear message", async () => {
+  on("GET", /lnkd\.in\/p\//, () => ({ text: `<html><body><a data-tracking-control-name="external_url_click" href="https://www.linkedin.com/posts/priya-sharma_sql-activity-1">link</a></body></html>` }));
+  on("GET", /linkedin\.com\/posts\/priya/, () => ({ text: LI_HTML }));
+  on("GET", /media\.licdn\.com\/dms\/document/, () => ({ text: "%PDF-1.7 fake", headers: { "content-type": "application/octet-stream" } }));
+  const p = await fetchPost("https://lnkd.in/p/d-M-nJ_K");
+  assert.equal(p.author, "Priya Sharma");
+  const m = await saveImportedFile(orgId, p);
+  assert.equal(m?.mime, "application/pdf");
+  assert.equal(m?.name, "SQL Roadmap 2026.pdf");
+
+  routes = [];
+  on("GET", /linkedin\.com/, () => ({ text: "<html><head><title>Sign Up | LinkedIn</title></head></html>" }));
+  await assert.rejects(fetchPost("https://www.linkedin.com/posts/x-activity-2"), /sign-in page/);
+});
+
+test("social.import step feeds clean + post: PDF attached on LinkedIn with credit", async () => {
+  on("GET", /linkedin\.com\/posts\/priya/, () => ({ text: LI_HTML }));
+  on("GET", /media\.licdn\.com\/dms\/document/, () => ({ text: "%PDF-1.7 fake" }));
+  const ctx = (config: Record<string, unknown>) => ({ config, orgId, log: () => {} }) as never;
+  const imp = (await publisher["social.import"](ctx({ url: "https://www.linkedin.com/posts/priya-sharma_sql-activity-1", withFile: "true" }))).output as { text: string; author: string; url: string; mediaId: string; fileTitle: string };
+  assert.ok(imp.mediaId);
+  const clean = (await publisher["social.rewrite"](ctx({ text: imp.text, style: "clean", author: imp.author, url: imp.url }))).output as { text: string };
+  assert.doesNotMatch(clean.text, /Repost to help/);
+  assert.match(clean.text, /Credit: Priya Sharma/);
+
+  const li = await conn("linkedin", oauth("linkedin", { personUrn: "urn:li:person:me" }));
+  on("POST", /rest\/documents\?action=initializeUpload/, () => ({ json: { value: { uploadUrl: "https://upload.linkedin.test/d", document: "urn:li:document:D9" } } }));
+  on("PUT", /upload\.linkedin\.test/, () => ({ status: 201 }));
+  on("GET", /rest\/documents\//, () => ({ json: { status: "AVAILABLE" } }));
+  on("POST", /rest\/posts/, () => ({ status: 201, headers: { "x-restli-id": "urn:li:share:5" } }));
+  const out = (await publisher["social.draft"](ctx({ text: clean.text, mediaId: imp.mediaId, mediaTitle: imp.fileTitle, mode: "post", connectionId: li }))).output as { status: string; url: string };
+  assert.equal(out.status, "posted");
+  assert.equal(find(/upload\.linkedin\.test/)!.body, "%PDF-1.7 fake");
+  assert.deepEqual(JSON.parse(find(/rest\/posts/)!.body).content, { media: { id: "urn:li:document:D9", title: "SQL Roadmap 2026" } });
+});
+
+// ── LinkedIn comment / delete ───────────────────────────────────────────────
+import { urnFromUrl, linkedinComment, linkedinDelete } from "../lib/social/linkedin";
+import { connectionHelpers } from "../lib/engine/connections";
+
+test("LinkedIn: post links → URN; comment as yourself; delete your own post", async () => {
+  assert.equal(urnFromUrl("https://www.linkedin.com/posts/priya-sharma_sql-activity-7254012345678901234-AbCd?utm_source=share"), "urn:li:activity:7254012345678901234");
+  assert.equal(urnFromUrl("https://www.linkedin.com/feed/update/urn:li:share:7254012345678901234/"), "urn:li:share:7254012345678901234");
+  assert.equal(urnFromUrl("https://www.linkedin.com/feed/update/urn%3Ali%3AugcPost%3A7254012345678901234"), "urn:li:ugcPost:7254012345678901234");
+  assert.throws(() => urnFromUrl("https://www.linkedin.com/in/someone"), /post ID/);
+
+  const li = await conn("linkedin", oauth("linkedin", { personUrn: "urn:li:person:me" }));
+  on("POST", /socialActions\/urn%3Ali%3Aactivity%3A7254012345678901234\/comments/, () => ({ status: 201, headers: { "x-restli-id": "c1" } }));
+  const r = await linkedinComment(connectionHelpers(orgId), li, "https://www.linkedin.com/posts/x-activity-7254012345678901234-AbCd", "Great post!");
+  assert.equal(r.id, "c1");
+  assert.deepEqual(JSON.parse(find(/comments/)!.body), { actor: "urn:li:person:me", object: "urn:li:activity:7254012345678901234", message: { text: "Great post!" } });
+
+  on("DELETE", /rest\/posts\/urn%3Ali%3Ashare%3A99/, () => ({ status: 204 }));
+  await linkedinDelete(connectionHelpers(orgId), li, "https://www.linkedin.com/feed/update/urn:li:share:99");
+  assert.ok(find(/rest\/posts\/urn%3Ali%3Ashare%3A99/, "DELETE"));
 });

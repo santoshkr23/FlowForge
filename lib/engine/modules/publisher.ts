@@ -4,11 +4,33 @@ import { siteUrl } from "../../oauth/providers";
 import { rewritePost, type RewriteStyle } from "../../social/rewrite";
 import { publishPost } from "../../social/publish";
 import { downloadFile } from "../net";
+import { fetchPost, saveImportedFile } from "../../social/importer";
+import { linkedinComment } from "../../social/linkedin";
+import { connectionHelpers } from "../connections";
 import { StepError, type ModuleRunner } from "../types";
 
 const s = (v: unknown) => (v == null ? "" : String(v)).trim();
 
 export const publisher: Record<string, ModuleRunner> = {
+  "linkedin.comment": async ({ config, orgId }) => {
+    return { output: await linkedinComment(connectionHelpers(orgId), s(config.connectionId), s(config.postUrl), s(config.text)) };
+  },
+
+  "social.import": async ({ config, orgId, log }) => {
+    const url = s(config.url);
+    if (!url) throw new StepError("No post link was given");
+    const p = await fetchPost(url);
+    let mediaId: string | null = null;
+    if (config.withFile !== false && config.withFile !== "false") {
+      try {
+        mediaId = (await saveImportedFile(orgId, p))?.id ?? null;
+      } catch (e) {
+        log(`File not downloaded: ${(e as Error).message}`);
+      }
+    }
+    return { output: { text: p.text, author: p.author ?? "", authorUrl: p.authorUrl ?? "", url: p.url, mediaId, fileTitle: p.document?.title ?? "", hasDocument: !!p.document, images: p.images } };
+  },
+
   "social.rewrite": async ({ config }) => {
     const text = s(config.text);
     if (!text) throw new StepError("There's no post text to clean");
@@ -26,8 +48,8 @@ export const publisher: Record<string, ModuleRunner> = {
     const text = s(config.text);
     const link = s(config.link) || null;
     if (!text && !link) throw new StepError("The post is empty");
-    let mediaId: string | null = null;
-    if (s(config.fileUrl)) {
+    let mediaId: string | null = s(config.mediaId) || null;
+    if (!mediaId && s(config.fileUrl)) {
       const f = await downloadFile(s(config.fileUrl), 20 * 1024 * 1024);
       const mime = f.contentType.split(";")[0].trim();
       if (!/^(image\/(jpeg|png|gif|webp)|application\/pdf)$/.test(mime)) throw new StepError(`Only pictures and PDFs can be attached (got ${mime})`);

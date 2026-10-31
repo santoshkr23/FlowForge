@@ -12,6 +12,23 @@ const e = (s: string, t: string) => ({ id: `${s}->${t}`, source: s, target: t })
 
 export const TEMPLATES: Template[] = [
   {
+    id: "post-link-to-linkedin",
+    name: "Share a post link → fetch text & PDF → clean → post on my LinkedIn",
+    description:
+      "Send a LinkedIn post link to this workflow (from your phone's share menu, a bookmark or another app). FlowForge reads the post, downloads its PDF carousel or picture, cleans the text, adds credit and hashtags, and posts it on your LinkedIn with the file.",
+    category: "Social media",
+    apps: ["webhook", "linkedin", "sparkles", "linkedin"],
+    graph: {
+      nodes: [
+        n("trigger", "trigger.webhook", 40, 200, "Post link received", { respond: "result" }),
+        n("import", "social.import", 300, 200, "Fetch post + file", { url: "{{trigger.query.url || trigger.body.url || trigger.body}}", withFile: "true" }),
+        n("clean", "social.rewrite", 560, 200, "Clean it", { text: "{{steps.import.text}}", style: "clean", author: "{{steps.import.author}}", url: "{{steps.import.url}}", credit: "true", maxTags: 5 }),
+        n("post", "social.draft", 820, 200, "Post on LinkedIn", { text: "{{steps.clean.text}}", mediaId: "{{steps.import.mediaId}}", mediaTitle: "{{steps.import.fileTitle}}", mode: "post", connectionId: "" }),
+      ],
+      edges: [e("trigger", "import"), e("import", "clean"), e("clean", "post")],
+    },
+  },
+  {
     id: "creator-reshare-review",
     name: "Creator you follow posts → clean & rewrite → your drafts",
     description:

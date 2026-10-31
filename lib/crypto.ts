@@ -38,3 +38,13 @@ export function sha256(s: string) {
 export function randomToken(bytes = 24) {
   return randomBytes(bytes).toString("base64url");
 }
+
+/** null when ENCRYPTION_KEY is usable, else the reason (shown to the site owner on the Connections page). */
+export function encryptionKeyProblem(): string | null {
+  try {
+    key();
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}

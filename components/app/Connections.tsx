@@ -6,6 +6,7 @@ import { APPS, CATALOG } from "@/lib/engine/catalog";
 import { api } from "@/lib/client";
 import { timeAgo } from "@/lib/format";
 
+const PINNED = ["linkedin", "facebook", "twitter", "google_oauth", "bluesky"];
 const SOCIAL = ["linkedin", "facebook", "twitter", "bluesky", "mastodon", "discord", "slack"];
 
 type Row = { id: string; app: string; name: string; createdAt: string };
@@ -28,7 +29,7 @@ export function Connections(props: { initial: Row[]; canEdit: boolean; openApp?:
     () =>
       Object.entries(APPS)
         .filter(([, a]) => !q || a.name.toLowerCase().includes(q.toLowerCase()))
-        .sort(([, a], [, b]) => a.name.localeCompare(b.name)),
+        .sort(([ka, a], [kb, b]) => (PINNED.indexOf(ka) + 1 || 99) - (PINNED.indexOf(kb) + 1 || 99) || a.name.localeCompare(b.name)),
     [q],
   );
 

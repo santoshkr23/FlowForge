@@ -150,6 +150,32 @@ export const APP_MODULES: ModuleMeta[] = [
 
   // ───────── Social media ─────────
   act({
+    type: "linkedin.comment",
+    name: "LinkedIn: comment on a post",
+    description: "Comment on any LinkedIn post (yours or someone else's) as yourself, using the post link.",
+    category: "Social media",
+    app: "linkedin",
+    color: C.linkedin,
+    fields: [conn("linkedin", "LinkedIn connection"), t("postUrl", "Post link", { required: true, placeholder: "https://www.linkedin.com/posts/…activity-…" }), ta("text", "Comment", { required: true })],
+    outputs: ["id", "post", "url"],
+  }),
+  act({
+    type: "social.import",
+    name: "Social: import a post from its link",
+    description: "Read a public post (LinkedIn or any page) from its link: text, author, and download its PDF or picture.",
+    category: "Social media",
+    app: "linkedin",
+    color: C.linkedin,
+    fields: [
+      t("url", "Post link", { required: true, placeholder: "https://www.linkedin.com/posts/… or https://lnkd.in/…" }),
+      sel("withFile", "Download the PDF / picture", [
+        ["true", "Yes"],
+        ["false", "No"],
+      ]),
+    ],
+    outputs: ["text", "author", "authorUrl", "url", "mediaId", "fileTitle", "hasDocument", "images"],
+  }),
+  act({
     type: "social.rewrite",
     name: "Social: clean & rewrite a post",
     description: "Strip 'see more', follow/repost asks and clutter from a copied post, optionally rewrite it in fresh words with AI, add a credit line and hashtags.",
@@ -187,6 +213,7 @@ export const APP_MODULES: ModuleMeta[] = [
       ta("text", "Post text", { required: true, placeholder: "{{steps.clean.text}}" }),
       t("link", "Link (optional)"),
       t("fileUrl", "Picture or PDF URL (optional)", { help: "A public link to a JPG, PNG or PDF to attach." }),
+      t("mediaId", "Imported file (optional)", { placeholder: "{{steps.import.mediaId}}", help: "The file from an 'import a post' step." }),
       t("mediaTitle", "File title (optional)"),
       sel("mode", "What to do", [
         ["draft", "Save as draft for review (recommended)"],
