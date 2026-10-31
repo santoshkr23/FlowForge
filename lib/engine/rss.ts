@@ -18,7 +18,6 @@ export async function readFeed(url: string): Promise<FeedItem[]> {
   const r = await httpRequest(url, { headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml" }, timeoutMs: 20_000 });
   if (r.status >= 400) throw new StepError(`Feed returned ${r.status}`);
   const xml = typeof r.body === "string" ? r.body : JSON.stringify(r.body);
-  // eslint-disable-next-line
   let doc: Record<string, any>;
   try {
     doc = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" }).parse(xml);

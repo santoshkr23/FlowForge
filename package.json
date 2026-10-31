@@ -8,13 +8,13 @@
     "build": "next build",
     "start": "next start",
     "worker": "tsx worker/index.ts",
-    "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "test": "DATABASE_URL=pglite://memory ENCRYPTION_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa tsx --test tests/*.test.ts",
     "db:generate": "drizzle-kit generate",
-    "start:prod": "tsx scripts/migrate.ts && next start"
+    "start:prod": "tsx scripts/migrate.ts && next start",
+    "check": "tsc --noEmit && npm test"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.13",
@@ -44,15 +44,12 @@
     "@types/react-dom": "^19.2.0",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.11",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "15.5.28",
     "postcss": "^8.5.32",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2"
   },
   "overrides": {
     "postcss": "$postcss",
-    "esbuild": "^0.25.12",
-    "glob": "^10.5.0"
+    "esbuild": "^0.25.12"
   }
 }

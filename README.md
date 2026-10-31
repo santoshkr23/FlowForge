@@ -139,6 +139,7 @@ Meta API version can be pinned with `META_GRAPH_VERSION` (default `v23.0`); Shop
 Each app is a catalog entry in `lib/engine/catalog-apps.ts` plus a short function in `lib/engine/modules/*.ts` (watch triggers: `lib/engine/pollers.ts`). `tests/apps.test.ts` shows how to test one against a simulated API.
 
 ## Before a public launch — read this
+- **Code checks**: ESLint was removed (its dependencies carry unfixed `minimatch`/`glob` advisories). TypeScript type-checks every build; run `npm run check` for types + tests.
 - **Code steps**: `code.javascript` uses Node's `vm` with a timeout. That is *not* a security boundary against a determined attacker. Before letting the public run code, swap it for [`isolated-vm`](https://github.com/laverdet/isolated-vm) or run code steps in a separate container — or keep it disabled by raising its `minPlan` to `ENTERPRISE`.
 - **Rate limiting**: login has a basic in-memory throttle; put a real limiter (Upstash, Cloudflare) in front of `/api/auth/*` and `/api/hooks/*`.
 - **Email**: set `SMTP_*` so invites are emailed (otherwise the invite link is shown to the admin to share).
