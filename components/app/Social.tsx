@@ -14,6 +14,7 @@ type PostRow = {
   text: string;
   link: string | null;
   mediaId: string | null;
+  mediaIds?: string[] | null;
   mediaTitle: string | null;
   targets: string[];
   status: string;
@@ -43,8 +44,9 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
   const [selected, setSelected] = useState<string[]>(() => accounts.filter((a) => a.channel === "linkedin").map((a) => a.target));
   const [text, setText] = useState("");
   const [link, setLink] = useState("");
-  const [file, setFile] = useState<Upload | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [files, setFiles] = useState<(Upload & { preview?: string })[]>([]);
+  const file = files[0] ?? null;
+  const hasPdf = files.some((f) => f.mime === "application/pdf");
   const [title, setTitle] = useState("");
   const [uploading, setUploading] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
@@ -78,11 +80,11 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
   const warnings = chosen.flatMap((a) => {
     const c = CHANNELS[a.channel];
     const out: string[] = [];
-    if (a.channel === "instagram" && (!file || file.mime === "application/pdf")) out.push(`${a.name}: Instagram needs a picture`);
+    if (a.channel === "instagram" && (!files.length || hasPdf)) out.push(`${a.name}: Instagram needs a picture`);
     if (a.channel === "x" && xLength(fullText) > 280) out.push(`${a.name}: ${xLength(fullText)}/280 characters`);
     else if (a.channel === "bluesky" && [...fullText].length > 300) out.push(`${a.name}: ${[...fullText].length}/300 characters`);
     else if (c.limit && a.channel !== "x" && [...text].length > c.limit) out.push(`${a.name}: over ${c.limit} characters`);
-    if (file?.mime === "application/pdf" && c.media !== "image+pdf" && a.channel !== "instagram") out.push(`${a.name}: PDF will be shared as a download link`);
+    if (hasPdf && c.media !== "image+pdf" && a.channel !== "instagram") out.push(`${a.name}: PDF will be shared as a download link`);
     return out;
   });
   const blocking = warnings.filter((w) => !w.includes("download link"));
@@ -91,18 +93,19 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
     setSelected((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]));
   }
 
-  async function upload(f: File) {
+  async function upload(list: File[]) {
     setUploading(true);
     setMsg(null);
     try {
-      const fd = new FormData();
-      fd.append("file", f);
-      const res = await fetch("/api/media", { method: "POST", body: fd });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? `Upload failed (${res.status})`);
-      setFile(data as Upload);
-      setPreview(f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
-      if (f.type === "application/pdf" && !title) setTitle(f.name.replace(/\.pdf$/i, "").replace(/[_-]+/g, " "));
+      for (const f of list.slice(0, 20 - files.length)) {
+        const fd = new FormData();
+        fd.append("file", f);
+        const res = await fetch("/api/media", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? `Upload failed (${res.status})`);
+        setFiles((cur) => [...cur, { ...(data as Upload), preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined }]);
+        if (f.type === "application/pdf" && !title) setTitle(f.name.replace(/\.pdf$/i, "").replace(/[_-]+/g, " "));
+      }
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     } finally {
@@ -167,19 +170,18 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
     setImporting(true);
     setMsg(null);
     try {
-      const r = await api<{ text: string; hashtags: string[]; source: string; media: Upload | null; title: string; notes: string[]; post: { author?: string; document?: unknown; images: string[] } }>(
+      const r = await api<{ text: string; hashtags: string[]; source: string; media: Upload[]; title: string; notes: string[]; post: { author?: string; document?: unknown; images: string[] } }>(
         "/api/posts/import",
         { body: { url: importUrl, style, credit } },
       );
       setText(r.text);
       setTags(r.hashtags);
       setTagSource(null);
-      setFile(r.media);
-      setPreview(r.media?.mime.startsWith("image/") ? r.media.url : null);
+      setFiles(r.media.map((m) => ({ ...m, preview: m.mime.startsWith("image/") ? m.url : undefined })));
       setTitle(r.title || "");
       setSrcName(r.post.author ?? "");
       if (!selected.length) setSelected(accounts.filter((a) => a.channel === "linkedin").map((a) => a.target));
-      const got = [r.media ? (r.media.mime === "application/pdf" ? "the PDF" : "the picture") : null, "the text"].filter(Boolean).join(" and ");
+      const got = [r.media.length ? (r.media[0].mime === "application/pdf" ? "the PDF" : r.media.length > 1 ? `${r.media.length} pictures` : "the picture") : null, "the text"].filter(Boolean).join(" and ");
       setMsg({ ok: true, text: [`Fetched ${got}${r.post.author ? ` from ${r.post.author}'s post` : ""} and cleaned it. Check it, then post.`, ...r.notes].join(" ") });
       setImportUrl("");
     } catch (e) {
@@ -221,8 +223,7 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
     setText(p.text);
     setLink(p.link ?? "");
     setTitle(p.mediaTitle ?? "");
-    setFile(p.mediaId ? { id: p.mediaId, name: p.mediaTitle || "Attached file", mime: "application/octet-stream", size: 0, url: "" } : null);
-    setPreview(null);
+    setFiles((p.mediaIds?.length ? p.mediaIds : p.mediaId ? [p.mediaId] : []).map((id, i) => ({ id, name: p.mediaTitle || `Attached file ${i + 1}`, mime: "application/octet-stream", size: 0, url: "" })));
     if (p.targets.length) setSelected(p.targets.filter((t) => accounts.some((a) => a.target === t)));
     setMsg({ ok: true, text: "Draft loaded — edit it, pick accounts and post or schedule." });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -237,7 +238,7 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
         body: {
           text,
           link: link.trim() || undefined,
-          mediaId: file?.id,
+          mediaIds: files.map((f) => f.id),
           mediaTitle: title.trim() || undefined,
           targets: selected,
           scheduledAt: mode === "later" ? new Date(when).toISOString() : undefined,
@@ -255,8 +256,7 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
       if (p.status !== "failed") {
         setText("");
         setLink("");
-        setFile(null);
-        setPreview(null);
+        setFiles([]);
         setTitle("");
         setTags([]);
         setSrcName("");
@@ -463,36 +463,64 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
         {/* attachment + link */}
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <span className="label">Picture or PDF</span>
-            {file ? (
-              <div className="flex items-center gap-3 rounded-lg border border-line p-2">
-                {preview ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={preview} alt="" className="h-14 w-14 rounded object-cover" />
+            <span className="label">Pictures or PDF</span>
+            {files.length > 0 && (
+              <div className="mb-2 space-y-2">
+                {hasPdf ? (
+                  files.map((f) => (
+                    <div key={f.id} className="flex items-center gap-3 rounded-lg border border-line p-2">
+                      <div className="flex h-14 w-14 items-center justify-center rounded bg-bad-tint text-bad">
+                        <FileText size={22} />
+                      </div>
+                      <div className="min-w-0 flex-1 text-sm">
+                        <div className="truncate font-medium">{f.name}</div>
+                        <div className="text-xs text-ink-faint">
+                          {f.mime === "application/pdf" ? "PDF · shows as a swipeable carousel on LinkedIn" : "File"}
+                          {f.size ? ` · ${kb(f.size)}` : ""}
+                        </div>
+                      </div>
+                      <button type="button" aria-label="Remove file" className="p-1 text-ink-faint hover:text-bad" onClick={() => setFiles(files.filter((x) => x.id !== f.id))}>
+                        <Close size={16} />
+                      </button>
+                    </div>
+                  ))
                 ) : (
-                  <div className="flex h-14 w-14 items-center justify-center rounded bg-bad-tint text-bad">
-                    <FileText size={22} />
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                    {files.map((f, i) => (
+                      <div key={f.id} className="group relative aspect-square overflow-hidden rounded-lg border border-line bg-canvas">
+                        {f.preview ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={f.preview} alt={`Picture ${i + 1}`} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-ink-faint">
+                            <ImageIcon size={20} />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          aria-label={`Remove picture ${i + 1}`}
+                          className="absolute right-1 top-1 rounded-full bg-paper/90 p-0.5 text-ink-soft hover:text-bad"
+                          onClick={() => setFiles(files.filter((x) => x.id !== f.id))}
+                        >
+                          <Close size={14} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
-                <div className="min-w-0 flex-1 text-sm">
-                  <div className="truncate font-medium">{file.name}</div>
-                  <div className="text-xs text-ink-faint">
-                    {file.mime === "application/pdf" ? "PDF · shows as a swipeable carousel on LinkedIn" : file.mime.startsWith("image/") ? "Picture" : "From draft"}{file.size ? ` · ${kb(file.size)}` : ""}
-                  </div>
-                </div>
-                <button type="button" aria-label="Remove file" className="p-1 text-ink-faint hover:text-bad" onClick={() => (setFile(null), setPreview(null))}>
-                  <Close size={16} />
-                </button>
+                <p className="text-xs text-ink-faint">
+                  {hasPdf ? "LinkedIn posts take one PDF." : `${files.length} picture${files.length > 1 ? "s" : ""} · LinkedIn and Facebook take up to 20, Instagram 10, Bluesky and Mastodon 4.`}
+                </p>
               </div>
-            ) : (
+            )}
+            {!hasPdf && files.length < 20 && (
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
-                  const f = e.dataTransfer.files[0];
-                  if (f) upload(f);
+                  upload([...e.dataTransfer.files]);
                 }}
                 disabled={uploading}
                 className="flex w-full flex-col items-center gap-1 rounded-lg border border-dashed border-line p-4 text-sm text-ink-soft hover:border-wire"
@@ -501,14 +529,24 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
                   <ImageIcon size={18} />
                   <FileText size={18} />
                 </span>
-                {uploading ? "Uploading…" : "Drop a file or click — JPG, PNG, PDF up to 20 MB"}
+                {uploading ? "Uploading…" : files.length ? "Add more pictures" : "Drop pictures or a PDF, or click — up to 20 MB each"}
               </button>
             )}
-            <input ref={fileRef} type="file" hidden accept="image/jpeg,image/png,image/gif,image/webp,application/pdf" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+            <input
+              ref={fileRef}
+              type="file"
+              hidden
+              multiple
+              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+              onChange={(e) => {
+                upload([...(e.target.files ?? [])]);
+                e.target.value = "";
+              }}
+            />
             {file && (
               <input
                 className="input mt-2"
-                placeholder={file.mime === "application/pdf" ? "Document title (shown on LinkedIn)" : "Describe the picture (alt text)"}
+                placeholder={hasPdf ? "Document title (shown on LinkedIn)" : "Describe the picture(s) (alt text)"}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />

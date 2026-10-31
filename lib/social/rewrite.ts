@@ -5,6 +5,27 @@
 import { aiProvider, chat } from "../ai";
 import { keywordHashtags } from "./hashtags";
 
+export type TagMode = "mix" | "mine" | "suggested" | "original";
+export const normTag = (t: string) => t.trim().replace(/^#+/, "").replace(/[^\p{L}\p{N}_]/gu, "");
+
+/** Which hashtags go on the post: yours, the author's, suggestions — deduped, capped at maxTags (yours always kept). */
+export function pickTags(original: string[], body: string, opts: { maxTags?: number; myTags?: string[]; tagMode?: TagMode } = {}) {
+  const max = opts.maxTags ?? 5;
+  const mine = (opts.myTags ?? []).map(normTag).filter(Boolean);
+  const mode = opts.tagMode ?? (mine.length ? "mix" : "suggested");
+  const pool =
+    mode === "mine" ? mine : mode === "original" ? [...mine, ...original] : mode === "mix" ? [...mine, ...original, ...keywordHashtags(body, 12)] : [...original, ...keywordHashtags(body, 12)];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of pool) {
+    const k = t.toLowerCase();
+    if (!t || seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+  }
+  return out.slice(0, Math.max(max, mine.length));
+}
+
 export type RewriteStyle = "clean" | "rewrite" | "short" | "hook";
 
 const JUNK_LINES: RegExp[] = [
@@ -93,7 +114,7 @@ const STYLE_PROMPT: Record<Exclude<RewriteStyle, "clean">, string> = {
  */
 export async function rewritePost(
   raw: string,
-  opts: { style?: RewriteStyle; author?: string; url?: string; credit?: boolean; maxTags?: number } = {},
+  opts: { style?: RewriteStyle; author?: string; url?: string; credit?: boolean; maxTags?: number; signature?: string; myTags?: string[]; tagMode?: TagMode } = {},
 ): Promise<{ text: string; body: string; hashtags: string[]; source: "ai" | "clean" }> {
   const style = opts.style ?? "clean";
   const cleaned = cleanPost(raw);
@@ -118,9 +139,8 @@ export async function rewritePost(
       /* keep the cleaned text */
     }
   }
-  const max = opts.maxTags ?? 5;
-  const tags = [...new Set([...cleaned.hashtags, ...keywordHashtags(body, 12)])].slice(0, max);
+  const tags = pickTags(cleaned.hashtags, body, opts);
   const credit = opts.credit === false ? "" : creditLine(opts.author, opts.url);
-  const text = [body, credit, tags.map((t) => `#${t}`).join(" ")].filter(Boolean).join("\n\n");
+  const text = [body, credit, (opts.signature ?? "").trim(), tags.map((t) => `#${t}`).join(" ")].filter(Boolean).join("\n\n");
   return { text, body, hashtags: tags, source };
 }

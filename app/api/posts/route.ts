@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { body, err, json, withAuth } from "@/lib/http";
 import { siteUrl } from "@/lib/oauth/providers";
@@ -15,6 +15,7 @@ export const GET = withAuth("VIEWER", async (ctx) => {
       text: schema.posts.text,
       link: schema.posts.link,
       mediaId: schema.posts.mediaId,
+      mediaIds: schema.posts.mediaIds,
       mediaTitle: schema.posts.mediaTitle,
       targets: schema.posts.targets,
       status: schema.posts.status,
@@ -34,6 +35,7 @@ const Body = z.object({
   text: z.string().max(10000).default(""),
   link: z.string().trim().url().max(2000).optional().or(z.literal("").transform(() => undefined)),
   mediaId: z.string().optional(),
+  mediaIds: z.array(z.string()).max(20).optional(),
   mediaTitle: z.string().trim().max(200).optional(),
   targets: z.array(z.string()).default([]),
   /** save for later review instead of posting */
@@ -46,7 +48,8 @@ const Body = z.object({
 /** Create a post. Without scheduledAt it is published right away. */
 export const POST = withAuth("BUILDER", async (ctx, req) => {
   const b = await body(req, Body);
-  if (!b.text.trim() && !b.mediaId && !b.link) return err("Write something, attach a file or add a link", 422);
+  const mediaIds = [...new Set([...(b.mediaIds ?? []), ...(b.mediaId ? [b.mediaId] : [])])];
+  if (!b.text.trim() && !mediaIds.length && !b.link) return err("Write something, attach a file or add a link", 422);
 
   const conns = await db
     .select({ id: schema.connections.id, app: schema.connections.app, name: schema.connections.name })
@@ -57,14 +60,14 @@ export const POST = withAuth("BUILDER", async (ctx, req) => {
   if (!b.draft && !targets.length) return err("Pick at least one account", 422);
   for (const t of targets) if (!accounts.has(t)) return err("One of the selected accounts isn't connected any more", 422);
 
-  if (b.mediaId) {
-    const [m] = await db.select({ id: schema.media.id, mime: schema.media.mime }).from(schema.media).where(and(eq(schema.media.id, b.mediaId), eq(schema.media.orgId, ctx.org.id))).limit(1);
-    if (!m) return err("Attached file not found", 422);
+  if (mediaIds.length) {
+    const ms = await db.select({ id: schema.media.id }).from(schema.media).where(and(inArray(schema.media.id, mediaIds), eq(schema.media.orgId, ctx.org.id)));
+    if (ms.length !== mediaIds.length) return err("Attached file not found", 422);
   }
   // catch the obvious problems before anything is posted
   for (const t of b.draft ? [] : targets) {
     const a = accounts.get(t)!;
-    if (a.channel === "instagram" && !b.mediaId) return err("Instagram needs a picture — attach one or untick Instagram", 422);
+    if (a.channel === "instagram" && !mediaIds.length) return err("Instagram needs a picture — attach one or untick Instagram", 422);
     if (a.channel === "x" && xLength([b.text, b.link].filter(Boolean).join("\n\n")) > 280) return err("Too long for X (280 characters, links count as 23). Shorten it or untick X.", 422);
     const lim = CHANNELS[a.channel].limit;
     if (a.channel !== "x" && lim && [...b.text].length > lim) return err(`Too long for ${CHANNELS[a.channel].name} (${lim} characters)`, 422);
@@ -79,7 +82,8 @@ export const POST = withAuth("BUILDER", async (ctx, req) => {
       createdById: ctx.user.id,
       text: b.text,
       link: b.link ?? null,
-      mediaId: b.mediaId ?? null,
+      mediaId: mediaIds[0] ?? null,
+      mediaIds,
       mediaTitle: b.mediaTitle || null,
       targets,
       baseUrl: siteUrl(req),

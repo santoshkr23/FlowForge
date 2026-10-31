@@ -375,3 +375,98 @@ test("LinkedIn: post links → URN; comment as yourself; delete your own post", 
   await linkedinDelete(connectionHelpers(orgId), li, "https://www.linkedin.com/feed/update/urn:li:share:99");
   assert.ok(find(/rest\/posts\/urn%3Ali%3Ashare%3A99/, "DELETE"));
 });
+
+// ── several pictures, profile watches, custom hashtags ──────────────────────
+import { dedupeImages } from "../lib/social/importer";
+import { checkWatch, postsOnProfile, tickWatches } from "../lib/social/watch";
+import { pickTags } from "../lib/social/rewrite";
+
+const img = (asset: string, size: number) => `https://media.licdn.com/dms/image/v2/${asset}/feedshare-shrink_${size}/0/1?e=1&t=x`;
+const MULTI_HTML = `<html><head><meta property="og:title" content="Rahul Verma on LinkedIn: 5 charts">
+<script type="application/ld+json">{"@type":"SocialMediaPosting","author":{"name":"Rahul Verma","url":"https://www.linkedin.com/in/rahul"},"articleBody":"5 charts every analyst should know\\n\\n#Charts #Old"}</script></head><body>
+<img data-delayed-url="${img("A1", 800)}"><img data-delayed-url="${img("A1", 2048)}">
+<img data-delayed-url="${img("A2", 800)}"><img data-delayed-url="${img("A3", 1280)}">
+</body></html>`;
+
+test("dedupeImages keeps one (largest) copy of each picture, in order", () => {
+  assert.deepEqual(dedupeImages([img("A1", 800), img("A2", 800), img("A1", 2048)]), [img("A1", 2048), img("A2", 800)]);
+});
+
+test("pickTags: mine first, then the post's suggestions; 'mine' only; 'original' keeps author's", () => {
+  assert.deepEqual(pickTags(["Old"], "sql data", { myTags: ["#DataTips", "powerbi"], tagMode: "mine", maxTags: 5 }), ["DataTips", "powerbi"]);
+  assert.deepEqual(pickTags(["Old"], "x", { myTags: ["Mine"], tagMode: "original", maxTags: 5 }), ["Mine", "Old"]);
+  const mix = pickTags(["Old"], "Hiring data analysts with SQL", { myTags: ["Mine"], tagMode: "mix", maxTags: 4 });
+  assert.equal(mix[0], "Mine");
+  assert.equal(mix.length, 4);
+});
+
+test("postsOnProfile finds post links (plain and JSON-escaped) without duplicates", () => {
+  const html = `<a href="https://www.linkedin.com/posts/rahul_charts-activity-7300000000000000002-xyz">a</a>
+  {"url":"https:\\/\\/www.linkedin.com\\/posts\\/rahul_old-activity-7300000000000000001-abc"}
+  <a href="https://www.linkedin.com/feed/update/urn:li:activity:7300000000000000002">dup</a>`;
+  assert.deepEqual(postsOnProfile(html).map((i) => i.id), ["7300000000000000002", "7300000000000000001"]);
+});
+
+test("profile watch: first check skips old posts; a new post is fetched with ALL pictures and posted as a LinkedIn multi-image post with my hashtags and sign-off", async () => {
+  const li = await conn("linkedin", oauth("linkedin", { personUrn: "urn:li:person:me" }));
+  const [w] = await db
+    .insert(schema.watches)
+    .values({ orgId, name: "Rahul", profileUrl: "https://www.linkedin.com/in/rahul", targets: [li], mode: "post", credit: false, signature: "Follow me → linkedin.com/in/santosh", hashtags: ["DataTips"], tagMode: "mine", nextCheckAt: new Date(0) })
+    .returning();
+  let profile = `<a href="https://www.linkedin.com/posts/rahul_old-activity-7300000000000000001-abc">old</a>`;
+  on("GET", /linkedin\.com\/in\/rahul/, () => ({ text: profile }));
+  on("GET", /linkedin\.com\/posts\/rahul_charts/, () => ({ text: MULTI_HTML }));
+  on("GET", /media\.licdn\.com\/dms\/image/, () => ({ text: "IMG", headers: { "content-type": "image/jpeg" } }));
+  let up = 0;
+  on("POST", /rest\/images\?action=initializeUpload/, () => ({ json: { value: { uploadUrl: `https://upload.linkedin.test/i${++up}`, image: `urn:li:image:I${up}` } } }));
+  on("PUT", /upload\.linkedin\.test/, () => ({ status: 201 }));
+  on("GET", /rest\/images\//, () => ({ json: { status: "AVAILABLE" } }));
+  on("POST", /rest\/posts/, () => ({ status: 201, headers: { "x-restli-id": "urn:li:share:77" } }));
+
+  assert.equal(await tickWatches(), 0); // seeding run
+  assert.equal(calls.filter((c) => /rest\/posts/.test(c.url)).length, 0);
+
+  profile = `<a href="https://www.linkedin.com/posts/rahul_charts-activity-7300000000000000002-xyz">new</a>` + profile;
+  const [fresh] = await db.select().from(schema.watches).where(eq(schema.watches.id, w.id));
+  const r = await checkWatch(fresh);
+  assert.equal(r.newPosts, 1, r.error);
+  const body = JSON.parse(find(/rest\/posts/, "POST")!.body);
+  assert.deepEqual(body.content, { multiImage: { images: [{ id: "urn:li:image:I1", altText: "" }, { id: "urn:li:image:I2", altText: "" }, { id: "urn:li:image:I3", altText: "" }] } });
+  assert.match(body.commentary, /5 charts every analyst should know/);
+  assert.match(body.commentary, /Follow me → linkedin\.com\/in\/santosh/);
+  assert.match(body.commentary, /\{hashtag\|\\#\|DataTips\}/);
+  assert.doesNotMatch(body.commentary, /Credit|Old|Charts\}/);
+
+  // the same post is never posted twice
+  calls = [];
+  const [after] = await db.select().from(schema.watches).where(eq(schema.watches.id, w.id));
+  assert.equal(after.postsMade, 1);
+  assert.equal((await checkWatch(after)).newPosts, 0);
+  assert.equal(calls.filter((c) => /rest\/posts/.test(c.url)).length, 0);
+});
+
+test("profile watch: LinkedIn sign-in wall is reported on the watch, not thrown", async () => {
+  const [w] = await db.insert(schema.watches).values({ orgId, name: "Blocked", profileUrl: "https://www.linkedin.com/in/blocked", targets: [], mode: "draft" }).returning();
+  on("GET", /linkedin\.com\/in\/blocked/, () => ({ text: "<html><head><title>Sign Up | LinkedIn</title></head></html>" }));
+  const r = await checkWatch(w);
+  assert.match(r.error!, /feed link/);
+  const [after] = await db.select().from(schema.watches).where(eq(schema.watches.id, w.id));
+  assert.match(after.lastError!, /sign in/);
+});
+
+test("Facebook Page: several pictures go up unpublished, then one post with attached_media", async () => {
+  const fb = await conn("facebook", oauth("facebook"), "Shop2");
+  const a = await file("a.jpg", "image/jpeg", "A");
+  const b = await file("b.jpg", "image/jpeg", "B");
+  let n = 0;
+  on("GET", /\/me\/accounts/, () => ({ json: { data: [{ id: "PAGE", access_token: "PT" }] } }));
+  on("POST", /\/PAGE\/photos/, () => ({ json: { id: `P${++n}` } }));
+  on("POST", /\/PAGE\/feed/, () => ({ json: { id: "PAGE_F2" } }));
+  const s = await publishPost((await post({ text: "Two pics", mediaId: a.id, mediaIds: [a.id, b.id], targets: [fb] })).id);
+  assert.equal(s.status, "posted", JSON.stringify(s.results));
+  const photos = calls.filter((c) => /\/PAGE\/photos/.test(c.url));
+  assert.equal(photos.length, 2);
+  assert.equal(new URLSearchParams(photos[0].body).get("published"), "false");
+  const feed = new URLSearchParams(find(/\/PAGE\/feed/)!.body);
+  assert.equal(feed.get("attached_media[1]"), JSON.stringify({ media_fbid: "P2" }));
+});

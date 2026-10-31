@@ -9,6 +9,7 @@ import { QUEUE_NAME } from "../lib/engine/queue";
 import { runExecution } from "../lib/engine/runner";
 import { tickScheduler } from "../lib/engine/scheduler";
 import { tickPosts } from "../lib/social/publish";
+import { tickWatches } from "../lib/social/watch";
 
 const url = process.env.REDIS_URL;
 if (!url) {
@@ -38,6 +39,7 @@ setInterval(() => {
   tickPosts()
     .then((n) => n && console.log(`📣 published ${n} scheduled post(s)`))
     .catch((e) => console.error("social posts", e));
+  tickWatches().catch((e) => console.error("profile watches", e));
 }, 30_000);
 
 process.on("SIGTERM", async () => {

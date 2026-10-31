@@ -119,6 +119,10 @@ Write one post and send it to every connected social account, now or at a set ti
 - **LinkedIn company pages** need LinkedIn's Community Management API (scope `w_organization_social`), which LinkedIn approves separately; personal profiles work with "Share on LinkedIn".
 - Files are stored in the database and served at an unguessable public link so Facebook/Instagram can fetch them — set APP_URL to your public address.
 
+### Auto-repost from profiles (Social page, bottom)
+
+Add a person's LinkedIn profile link. Every 30 min–1 day FlowForge checks for new posts; the first check only remembers existing posts. Each new post is fetched with all its pictures (up to 20, posted as a LinkedIn multi-image post) or its PDF, cleaned, given your hashtags (only mine / mine + suggested / mine + author's) and sign-off, then posted or saved as a draft. LinkedIn often hides profiles from servers — if a check reports that, add a feed link for the person instead. Workflow trigger: "LinkedIn: someone posts" (`linkedin.profile_watch`).
+
 ## One-click app sign-in ("Connect with Google / Facebook / X …")
 
 Customers connect most apps by pasting a key. For the big platforms they expect a **Connect with …** button, and that button only works after **you** (the platform owner) register a free developer app with each provider. Until you do, the button is hidden and the app shows a short note instead.

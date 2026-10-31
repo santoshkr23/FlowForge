@@ -230,6 +230,10 @@ export const posts = pgTable(
     link: text("link"),
     mediaId: text("media_id").references(() => media.id, { onDelete: "set null" }),
     mediaTitle: text("media_title"),
+    /** all attached files in order (several pictures, or one PDF); mediaId is the first */
+    mediaIds: jsonb("media_ids").$type<string[]>(),
+    /** set when created by a profile watch */
+    watchId: text("watch_id"),
     targets: jsonb("targets").$type<string[]>().notNull(), // "connId" or "connId:instagram"
     baseUrl: text("base_url"), // public site address at creation, for media links
     status: text("status").notNull().default("scheduled"), // scheduled | posting | posted | partial | failed
@@ -241,5 +245,39 @@ export const posts = pgTable(
   (t) => [index("posts_org_time").on(t.orgId, t.createdAt), index("posts_due").on(t.status, t.scheduledAt)],
 );
 
+/** Profiles/feeds to watch: each new post is fetched, cleaned and posted (or drafted) to your accounts. */
+export const watches = pgTable(
+  "watches",
+  {
+    id: id(),
+    orgId: text("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    profileUrl: text("profile_url"),
+    feedUrl: text("feed_url"),
+    targets: jsonb("targets").$type<string[]>().notNull(),
+    mode: text("mode").notNull().default("post"), // post | draft
+    style: text("style").notNull().default("clean"),
+    credit: boolean("credit").notNull().default(true),
+    /** your own line added to every post, e.g. "Follow me for more: linkedin.com/in/you" */
+    signature: text("signature"),
+    /** your own hashtags (no #), always added */
+    hashtags: jsonb("hashtags").$type<string[]>().notNull().default([]),
+    /** mine = only my hashtags · mix = mine + suggested · suggested · original = keep the author's */
+    tagMode: text("tag_mode").notNull().default("mix"),
+    maxTags: integer("max_tags").notNull().default(5),
+    intervalMin: integer("interval_min").notNull().default(60),
+    active: boolean("active").notNull().default(true),
+    seen: jsonb("seen").$type<string[]>().notNull().default([]),
+    seeded: boolean("seeded").notNull().default(false),
+    nextCheckAt: timestamp("next_check_at", { withTimezone: true }),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    postsMade: integer("posts_made").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index("watches_org").on(t.orgId), index("watches_due").on(t.active, t.nextCheckAt)],
+);
+
+export type Watch = typeof watches.$inferSelect;
 export type Post = typeof posts.$inferSelect;
 export type Media = typeof media.$inferSelect;

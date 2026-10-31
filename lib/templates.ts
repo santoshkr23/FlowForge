@@ -12,6 +12,22 @@ const e = (s: string, t: string) => ({ id: `${s}->${t}`, source: s, target: t })
 
 export const TEMPLATES: Template[] = [
   {
+    id: "profile-to-linkedin",
+    name: "Someone posts on LinkedIn → copy text, pictures & PDF → post on my LinkedIn",
+    description: "Add a person's LinkedIn profile link. Every hour, their new posts are fetched with all pictures or the PDF, cleaned, given your hashtags and sign-off, and posted on your profile. (Easier: Social → Auto-repost from profiles.)",
+    category: "Social media",
+    apps: ["linkedin", "sparkles", "linkedin"],
+    graph: {
+      nodes: [
+        n("trigger", "linkedin.profile_watch", 40, 200, "They post", { profileUrl: "https://www.linkedin.com/in/their-profile", feedUrl: "", intervalMin: 60 }),
+        n("import", "social.import", 300, 200, "Fetch post + files", { url: "{{trigger.url}}", withFile: "true" }),
+        n("clean", "social.rewrite", 560, 200, "Clean it", { text: "{{steps.import.text}}", style: "clean", author: "{{steps.import.author}}", url: "{{steps.import.url}}", credit: "true", maxTags: 5 }),
+        n("post", "social.draft", 820, 200, "Post on my LinkedIn", { text: "{{steps.clean.text}}", mediaIds: "{{steps.import.mediaIds}}", mediaTitle: "{{steps.import.fileTitle}}", mode: "post", connectionId: "" }),
+      ],
+      edges: [e("trigger", "import"), e("import", "clean"), e("clean", "post")],
+    },
+  },
+  {
     id: "post-link-to-linkedin",
     name: "Share a post link → fetch text & PDF → clean → post on my LinkedIn",
     description:
@@ -23,7 +39,7 @@ export const TEMPLATES: Template[] = [
         n("trigger", "trigger.webhook", 40, 200, "Post link received", { respond: "result" }),
         n("import", "social.import", 300, 200, "Fetch post + file", { url: "{{trigger.query.url || trigger.body.url || trigger.body}}", withFile: "true" }),
         n("clean", "social.rewrite", 560, 200, "Clean it", { text: "{{steps.import.text}}", style: "clean", author: "{{steps.import.author}}", url: "{{steps.import.url}}", credit: "true", maxTags: 5 }),
-        n("post", "social.draft", 820, 200, "Post on LinkedIn", { text: "{{steps.clean.text}}", mediaId: "{{steps.import.mediaId}}", mediaTitle: "{{steps.import.fileTitle}}", mode: "post", connectionId: "" }),
+        n("post", "social.draft", 820, 200, "Post on LinkedIn", { text: "{{steps.clean.text}}", mediaIds: "{{steps.import.mediaIds}}", mediaTitle: "{{steps.import.fileTitle}}", mode: "post", connectionId: "" }),
       ],
       edges: [e("trigger", "import"), e("import", "clean"), e("clean", "post")],
     },

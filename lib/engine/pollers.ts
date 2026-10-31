@@ -26,6 +26,12 @@ function diffById<T>(items: T[], id: (t: T) => string, state: State): PollResult
 }
 
 export const POLLERS: Record<string, Poller> = {
+  "linkedin.profile_watch": async ({ config, state }) => {
+    const { listItems } = await import("../social/watch");
+    const items = await listItems({ profileUrl: s(config.profileUrl) || null, feedUrl: s(config.feedUrl) || null });
+    return diffById(items.map((i) => ({ ...i, url: i.link })), (i) => i.id, state);
+  },
+
   "rss.watch": async ({ config, state }) => diffById(await readFeed(s(config.url)), (i: FeedItem) => i.id, state),
 
   "youtube.watch": async ({ config, state }) => {

@@ -69,6 +69,18 @@ async function getPage(url: string) {
   return { status: res.status, finalUrl: res.url || url, html };
 }
 
+/** LinkedIn lists each picture in several sizes — keep one (the largest) per picture, in order. */
+export function dedupeImages(urls: string[]) {
+  const best = new Map<string, { url: string; size: number }>();
+  for (const u of urls) {
+    const key = u.match(/\/dms\/image\/(?:v2\/)?([^/]+)\//)?.[1] ?? u;
+    const size = Number(u.match(/shrink_(\d+)/)?.[1] ?? 0);
+    const cur = best.get(key);
+    if (!cur || size > cur.size) best.set(key, { url: u, size });
+  }
+  return [...best.values()].map((v) => v.url);
+}
+
 export function parseLinkedIn(html: string, url: string): ImportedPost {
   const post: ImportedPost = { url, site: "linkedin", text: "", images: [] };
   // 1. structured data
@@ -117,7 +129,7 @@ export function parseLinkedIn(html: string, url: string): ImportedPost {
   }
   const og = meta(html, "og:image");
   if (!post.images.length && og && !/profile-displayphoto|company-logo|static\.licdn\.com/i.test(og)) post.images.push(og);
-  post.images = [...new Set(post.images)];
+  post.images = dedupeImages(post.images);
   post.text = post.text.trim();
   return post;
 }
@@ -160,19 +172,45 @@ export async function fetchPost(rawUrl: string): Promise<ImportedPost> {
   return parseWeb(page.html, final);
 }
 
-/** Download the post's PDF (preferred) or first picture into the media library. */
-export async function saveImportedFile(orgId: string, p: ImportedPost): Promise<{ id: string; name: string; mime: string; size: number; token: string } | null> {
-  const src = p.document?.url ?? p.images[0];
-  if (!src) return null;
+type Saved = { id: string; name: string; mime: string; size: number; token: string };
+
+async function saveOne(orgId: string, src: string, base: string, isDoc: boolean): Promise<Saved | null> {
   const f = await downloadFile(src, 20 * 1024 * 1024);
   let mime = f.contentType.split(";")[0].trim().toLowerCase();
-  if (p.document && (mime === "application/octet-stream" || f.data.subarray(0, 5).toString() === "%PDF-")) mime = "application/pdf";
+  if (isDoc && (mime === "application/octet-stream" || f.data.subarray(0, 5).toString() === "%PDF-")) mime = "application/pdf";
+  if (!isDoc && mime === "application/octet-stream") mime = "image/jpeg";
   if (!/^(image\/(jpeg|png|gif|webp)|application\/pdf)$/.test(mime)) return null;
   const ext = mime === "application/pdf" ? "pdf" : mime.split("/")[1].replace("jpeg", "jpg");
-  const base = (p.document?.title || p.author || "post").replace(/[^\w\- ]+/g, "").trim().slice(0, 80) || "post";
   const [m] = await db
     .insert(schema.media)
     .values({ orgId, token: crypto.randomUUID().replace(/-/g, ""), name: `${base}.${ext}`, mime, size: f.data.length, data: f.data })
     .returning({ id: schema.media.id, name: schema.media.name, mime: schema.media.mime, size: schema.media.size, token: schema.media.token });
   return m;
+}
+
+/** Download the post's PDF, or all its pictures (up to 20), into the media library. */
+export async function saveImportedFiles(orgId: string, p: ImportedPost): Promise<{ files: Saved[]; failed: number }> {
+  const base = (p.document?.title || p.author || "post").replace(/[^\w\- ]+/g, "").trim().slice(0, 80) || "post";
+  if (p.document) {
+    const m = await saveOne(orgId, p.document.url, base, true);
+    return { files: m ? [m] : [], failed: m ? 0 : 1 };
+  }
+  const files: Saved[] = [];
+  let failed = 0;
+  const list = p.images.slice(0, 20);
+  for (let i = 0; i < list.length; i++) {
+    try {
+      const m = await saveOne(orgId, list[i], list.length > 1 ? `${base} ${i + 1}` : base, false);
+      if (m) files.push(m);
+      else failed++;
+    } catch {
+      failed++;
+    }
+  }
+  return { files, failed };
+}
+
+/** First file only (kept for older callers). */
+export async function saveImportedFile(orgId: string, p: ImportedPost): Promise<Saved | null> {
+  return (await saveImportedFiles(orgId, p)).files[0] ?? null;
 }

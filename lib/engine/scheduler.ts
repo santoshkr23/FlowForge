@@ -76,5 +76,6 @@ export function startInlineScheduler(intervalMs = 30_000) {
   g.__ffSched = setInterval(() => {
     tickScheduler().catch((e) => console.error("scheduler", e));
     import("../social/publish").then((m) => m.tickPosts()).catch((e) => console.error("social posts", e));
+    import("../social/watch").then((m) => m.tickWatches()).catch((e) => console.error("profile watches", e));
   }, intervalMs);
 }
