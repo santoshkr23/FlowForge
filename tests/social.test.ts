@@ -491,3 +491,48 @@ test("workflow mapping mistakes are tolerated: ids in the URL field attach the f
   const r = (await publisher["social.rewrite"](ctx({ text: `Real post text${a.id},${b.id}["https://media.licdn.com/dms/image/v2/X/feedshare-shrink_800/0/1"]`, style: "clean", credit: "false", maxTags: 0 }))).output as { text: string };
   assert.equal(r.text, "Real post text");
 });
+
+// ── backtest: the "Someone posts on LinkedIn → … → post on my LinkedIn" template, end to end ──
+import { sampleTriggerInput } from "../lib/engine/sample";
+import { startRun } from "../lib/engine/queue";
+
+test("backtest: template test-run with {} uses the newest real post; the repost goes out once, then is skipped as a duplicate", async () => {
+  const li = await conn("linkedin", oauth("linkedin", { personUrn: "urn:li:person:me" }));
+  const t = TEMPLATES.find((x) => x.id === "profile-to-linkedin")!;
+  const graph = structuredClone(t.graph);
+  graph.nodes.find((n) => n.id === "trigger")!.data.config = { profileUrl: "https://www.linkedin.com/in/rahul", intervalMin: 60 };
+  graph.nodes.find((n) => n.id === "post")!.data.config.connectionId = li;
+  const [wf] = await db.insert(schema.workflows).values({ orgId, name: t.name, graph }).returning();
+
+  on("GET", /linkedin\.com\/in\/rahul/, () => ({ text: `<a href="https://www.linkedin.com/posts/rahul_charts-activity-7300000000000000002-xyz">new</a><a href="https://www.linkedin.com/posts/rahul_old-activity-7300000000000000001-abc">old</a>` }));
+  on("GET", /linkedin\.com\/posts\/rahul_charts/, () => ({ text: MULTI_HTML.replace("5 charts every analyst should know", "Seven SQL window functions every data analyst should practise this week") }));
+  on("GET", /media\.licdn\.com\/dms\/image/, () => ({ text: "IMG", headers: { "content-type": "image/jpeg" } }));
+  let up = 0;
+  on("POST", /rest\/images\?action=initializeUpload/, () => ({ json: { value: { uploadUrl: `https://upload.linkedin.test/b${++up}`, image: `urn:li:image:B${up}` } } }));
+  on("PUT", /upload\.linkedin\.test/, () => ({ status: 201 }));
+  on("GET", /rest\/images\//, () => ({ json: { status: "AVAILABLE" } }));
+  on("POST", /rest\/posts/, () => ({ status: 201, headers: { "x-restli-id": "urn:li:share:88" } }));
+
+  // the old behaviour: {} input → empty trigger → "No post link was given". Now the newest post is used.
+  const input = (await sampleTriggerInput(wf, orgId)) as { url: string };
+  assert.match(input.url, /activity-7300000000000000002/);
+
+  const run1 = (await startRun(wf, "manual", input, { wait: true })).outcome!;
+  assert.equal(run1.status, "SUCCESS", run1.error ?? "");
+  const posted = JSON.parse(find(/rest\/posts/, "POST")!.body);
+  assert.equal(posted.content.multiImage.images.length, 3);
+  assert.match(posted.commentary, /Seven SQL window functions/);
+
+  // run again (or the timer sees your own repost): nothing is posted twice
+  calls = [];
+  const run2 = (await startRun(wf, "manual", input, { wait: true })).outcome!;
+  assert.equal(run2.status, "SUCCESS", run2.error ?? "");
+  assert.equal(calls.filter((c) => /rest\/posts/.test(c.url)).length, 0);
+});
+
+test("backtest: blocked profile gives a clear test-run message instead of a blank trigger", async () => {
+  const graph = structuredClone(TEMPLATES.find((x) => x.id === "profile-to-linkedin")!.graph);
+  graph.nodes.find((n) => n.id === "trigger")!.data.config = { profileUrl: "https://www.linkedin.com/in/walled" };
+  on("GET", /linkedin\.com\/in\/walled/, () => ({ text: "<html><head><title>Sign Up | LinkedIn</title></head></html>" }));
+  await assert.rejects(sampleTriggerInput({ graph }, orgId), /couldn't check its source — LinkedIn didn't show this profile/);
+});

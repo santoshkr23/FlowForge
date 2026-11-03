@@ -13,6 +13,7 @@ import { siteUrl } from "../oauth/providers";
 import { fetchPost, saveImportedFiles, type ImportedPost } from "./importer";
 import { rewritePost, type RewriteStyle, type TagMode } from "./rewrite";
 import { publishPost } from "./publish";
+import { alreadyPosted } from "./dupe";
 
 type Item = { id: string; link: string; title?: string; summary?: string; author?: string };
 
@@ -76,6 +77,7 @@ async function handleItem(w: Watch, item: Item) {
     if (!item.title && !item.summary) throw e;
     p = { url: item.link, site: "web", author: item.author || w.name, text: [item.title, item.summary].filter(Boolean).join("\n\n"), images: [] };
   }
+  if (p.text && (await alreadyPosted(w.orgId, p.text))) return null; // already posted / one of our own reposts
   const { files } = await saveImportedFiles(w.orgId, p).catch(() => ({ files: [] as { id: string }[] }));
   const r = await rewritePost(p.text, {
     style: w.style as RewriteStyle,
@@ -135,8 +137,7 @@ export async function checkWatch(w: Watch): Promise<{ newPosts: number; error?: 
   let error: string | undefined;
   for (const it of fresh) {
     try {
-      await handleItem(w, it);
-      made++;
+      if (await handleItem(w, it)) made++;
     } catch (e) {
       error = `${it.link}: ${(e as Error).message}`.slice(0, 500);
     }

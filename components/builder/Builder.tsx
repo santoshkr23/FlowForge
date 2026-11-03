@@ -378,7 +378,7 @@ function Inner({ workflow, webhookUrl, connections, plan, readOnly, lastRun }: P
                       Test input (JSON)
                     </label>
                     <textarea id="test-input" rows={5} className="input font-mono text-[13px]" value={testInput} onChange={(e) => setTestInput(e.target.value)} />
-                    <p className="mt-1 text-xs text-ink-faint">Becomes the trigger data for this test. Test runs use real credits and really send messages.</p>
+                    <p className="mt-1 text-xs text-ink-faint">Becomes the trigger data for this test. Leave it as {} for a watch trigger ("someone posts", "new RSS item") and the test uses the newest real item. Test runs use real credits and really send messages.</p>
                   </div>
                   {!readOnly && (
                     <button className="btn-primary w-full" onClick={runOnce} disabled={running}>

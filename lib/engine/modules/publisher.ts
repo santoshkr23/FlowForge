@@ -7,6 +7,7 @@ import { publishPost } from "../../social/publish";
 import { downloadFile } from "../net";
 import { fetchPost, saveImportedFiles } from "../../social/importer";
 import { linkedinComment } from "../../social/linkedin";
+import { alreadyPosted } from "../../social/dupe";
 import { connectionHelpers } from "../connections";
 import { StepError, type ModuleRunner } from "../types";
 
@@ -21,6 +22,10 @@ export const publisher: Record<string, ModuleRunner> = {
     const url = s(config.url);
     if (!url) throw new StepError("No post link was given");
     const p = await fetchPost(url);
+    if (p.text && (await alreadyPosted(orgId, p.text))) {
+      log("Skipped: this post's text was already posted through FlowForge (or it's one of your own reposts).");
+      return { output: { skipped: true, reason: "already posted", url: p.url }, stop: true };
+    }
     let mediaIds: string[] = [];
     if (config.withFile !== false && config.withFile !== "false") {
       try {
