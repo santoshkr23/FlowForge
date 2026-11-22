@@ -46,6 +46,6 @@ export async function GET(req: Request) {
     q.set("code_challenge_method", "S256");
   }
   const res = NextResponse.redirect(`${p.authorizeUrl}?${q}`);
-  res.cookies.set("ff_oauth", cookie, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/api/oauth", maxAge: 900 });
+  res.cookies.set("ff_oauth", cookie, { httpOnly: true, sameSite: "lax", secure: site.startsWith("https://"), path: "/api/oauth", maxAge: 900 });
   return res;
 }

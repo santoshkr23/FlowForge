@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { and, eq } from "drizzle-orm";
@@ -18,11 +18,24 @@ export async function signSession(p: SessionPayload) {
   return new SignJWT(p).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("30d").sign(secret());
 }
 
+/**
+ * Secure cookies only work over HTTPS. Use them whenever the site is reached over HTTPS, but not when it runs on
+ * plain http (e.g. http://SERVER-IP:3100 before a domain is set up) — otherwise the browser drops the cookie and
+ * sign-in silently fails.
+ */
+export async function secureCookies() {
+  const app = (process.env.APP_URL ?? "").trim();
+  if (/^https:\/\//.test(app)) return true;
+  if (/^http:\/\//.test(app)) return false;
+  const h = await headers();
+  return (h.get("x-forwarded-proto") ?? "").split(",")[0].trim() === "https";
+}
+
 export async function createSession(p: SessionPayload) {
   (await cookies()).set(COOKIE, await signSession(p), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: await secureCookies(),
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });

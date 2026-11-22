@@ -10,9 +10,11 @@ services:
     image: flowforge-app:latest
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${FLOWFORGE_PORT:-3100}:3000"
+      # No domain yet? Set FLOWFORGE_BIND=0.0.0.0 and open http://YOUR-SERVER-IP:3100
+      - "${FLOWFORGE_BIND:-127.0.0.1}:${FLOWFORGE_PORT:-3100}:3000"
     environment:
-      APP_URL: ${APP_URL:?Set APP_URL to your FlowForge address, e.g. https://flowforge.example.com}
+      # your FlowForge address: https://flowforge.example.com, or http://YOUR-SERVER-IP:3100 before you have a domain
+      APP_URL: ${APP_URL:?Set APP_URL, e.g. http://YOUR-SERVER-IP:3100}
       DATABASE_URL: postgresql://flowforge:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/flowforge
       AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET (64 random hex characters)}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY - the same one you used on Render}

@@ -17,7 +17,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://flowforge:${POSTGRES_PASSWORD}@db:5432/flowforge}
     ports:
-      - "127.0.0.1:${FLOWFORGE_PORT:-3100}:3000"
+      - "${FLOWFORGE_BIND:-127.0.0.1}:${FLOWFORGE_PORT:-3100}:3000"
     depends_on:
       db:
         condition: service_healthy
