@@ -17,8 +17,8 @@ export async function apiListWorkflows(org: Org) {
   return rows;
 }
 
-export async function apiRunWorkflow(org: Org, workflowId: string, input: unknown, via: "api" | "mcp") {
-  if (!planAllows(org.plan, "PRO")) throw new HttpError(402, "API & MCP access needs the Pro plan or higher");
+export async function apiRunWorkflow(org: Org, workflowId: string, input: unknown, via: "api" | "mcp", opts: { skipPlanCheck?: boolean } = {}) {
+  if (!opts.skipPlanCheck && !planAllows(org.plan, "PRO")) throw new HttpError(402, "API & MCP access needs the Pro plan or higher");
   const [wf] = await db
     .select()
     .from(schema.workflows)

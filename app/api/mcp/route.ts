@@ -1,52 +1,49 @@
 /**
  * MCP server (Streamable HTTP transport, JSON responses).
- * Customers add  {APP_URL}/api/mcp  as a remote MCP server in Claude / ChatGPT / any MCP client,
- * with header  Authorization: Bearer ff_…  (an API key from Settings).
+ *
+ * Connect from Claude: Settings → Connectors → Add custom connector → {APP_URL}/api/mcp → "Sign in to FlowForge".
+ * Sign-in uses OAuth (see lib/mcp-oauth.ts). Scripts and other MCP clients may instead send
+ * "Authorization: Bearer ff_…" (an API key from API & MCP).
  */
-import { NextResponse } from "next/server";
 import { orgFromApiKey } from "@/lib/apikey";
-import { apiGetExecution, apiListWorkflows, apiRunWorkflow } from "@/lib/public-api";
+import { isSuperAdmin } from "@/lib/auth";
+import { planAllows } from "@/lib/plans";
 import { HttpError } from "@/lib/http";
+import { CORS, preflight } from "@/lib/cors";
+import { principalFromAccessToken, unauthorized } from "@/lib/mcp-oauth";
+import { TOOLS, callTool, type McpPrincipal } from "@/lib/mcp-tools";
 
 export const maxDuration = 300;
-
-const TOOLS = [
-  {
-    name: "list_workflows",
-    description: "List the automation workflows in this FlowForge workspace, with ids, names and whether they are active.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "run_workflow",
-    description: "Run a FlowForge workflow by id and return its output. `input` becomes the workflow's trigger data.",
-    inputSchema: {
-      type: "object",
-      properties: { workflow_id: { type: "string" }, input: { type: "object", description: "JSON input for the trigger" } },
-      required: ["workflow_id"],
-    },
-  },
-  {
-    name: "get_execution",
-    description: "Get the status, step log and output of a past workflow run.",
-    inputSchema: { type: "object", properties: { execution_id: { type: "string" } }, required: ["execution_id"] },
-  },
-];
 
 type Rpc = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
 
 const ok = (id: Rpc["id"], result: unknown) => ({ jsonrpc: "2.0", id, result });
 const fail = (id: Rpc["id"], code: number, message: string) => ({ jsonrpc: "2.0", id, error: { code, message } });
 const text = (v: unknown, isError = false) => ({ content: [{ type: "text", text: typeof v === "string" ? v : JSON.stringify(v, null, 2) }], isError });
+const reply = (data: unknown, status = 200) => new Response(data === null ? null : JSON.stringify(data), { status, headers: { "content-type": "application/json", ...CORS } });
+
+const PROTOCOLS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+
+async function principal(req: Request): Promise<McpPrincipal | null> {
+  const h = req.headers.get("authorization") ?? "";
+  const token = h.startsWith("Bearer ") ? h.slice(7).trim() : "";
+  if (token.startsWith("ffo_")) {
+    const p = await principalFromAccessToken(token);
+    return p ? { org: p.org, userId: p.user.id, admin: isSuperAdmin(p.user.email), via: "oauth" } : null;
+  }
+  const org = await orgFromApiKey(req);
+  return org ? { org, userId: null, admin: false, via: "apikey" } : null;
+}
 
 export async function POST(req: Request) {
-  const org = await orgFromApiKey(req);
-  if (!org) return NextResponse.json(fail(null, -32001, "Invalid or missing API key"), { status: 401, headers: { "WWW-Authenticate": "Bearer" } });
+  const who = await principal(req);
+  if (!who) return unauthorized(req);
 
   let msg: Rpc | Rpc[];
   try {
     msg = await req.json();
   } catch {
-    return NextResponse.json(fail(null, -32700, "Parse error"), { status: 400 });
+    return reply(fail(null, -32700, "Parse error"), 400);
   }
   const batch = Array.isArray(msg) ? msg : [msg];
   const out: unknown[] = [];
@@ -55,34 +52,48 @@ export async function POST(req: Request) {
     if (m.id === undefined) continue; // notifications (e.g. notifications/initialized) need no reply
     try {
       switch (m.method) {
-        case "initialize":
+        case "initialize": {
+          const asked = m.params?.protocolVersion as string | undefined;
           out.push(
             ok(m.id, {
-              protocolVersion: (m.params?.protocolVersion as string) ?? "2025-06-18",
+              protocolVersion: asked && PROTOCOLS.includes(asked) ? asked : PROTOCOLS[1],
               capabilities: { tools: { listChanged: false } },
-              serverInfo: { name: "flowforge", version: "1.0.0" },
-              instructions: "Use list_workflows to discover automations, then run_workflow to execute one.",
+              serverInfo: { name: "flowforge", title: "FlowForge", version: "1.1.0" },
+              instructions:
+                "FlowForge runs automation workflows and publishes social media posts. Use list_social_accounts before creating a post, " +
+                "create_social_post to publish now / schedule / save a draft, import_post_from_link to turn a post link into clean text plus its pictures or PDF, " +
+                "and list_workflows + run_workflow for other automations. Posting to social accounts is public: confirm the text and accounts with the user before publishing.",
             }),
           );
           break;
+        }
         case "ping":
           out.push(ok(m.id, {}));
           break;
         case "tools/list":
           out.push(ok(m.id, { tools: TOOLS }));
           break;
+        case "resources/list":
+          out.push(ok(m.id, { resources: [] }));
+          break;
+        case "prompts/list":
+          out.push(ok(m.id, { prompts: [] }));
+          break;
         case "tools/call": {
-          const name = m.params?.name as string;
+          const name = String(m.params?.name ?? "");
           const args = (m.params?.arguments ?? {}) as Record<string, unknown>;
+          if (!TOOLS.some((t) => t.name === name)) {
+            out.push(fail(m.id, -32602, `Unknown tool: ${name}`));
+            break;
+          }
+          if (!who.admin && !planAllows(who.org.plan, "PRO")) {
+            out.push(ok(m.id, text("FlowForge's AI assistant connector needs the Pro plan or higher. Upgrade under Billing in FlowForge.", true)));
+            break;
+          }
           try {
-            if (name === "list_workflows") out.push(ok(m.id, text(await apiListWorkflows(org))));
-            else if (name === "run_workflow") {
-              const r = await apiRunWorkflow(org, String(args.workflow_id), args.input ?? {}, "mcp");
-              out.push(ok(m.id, text(r, r.status === "ERROR")));
-            } else if (name === "get_execution") out.push(ok(m.id, text(await apiGetExecution(org, String(args.execution_id)))));
-            else out.push(fail(m.id, -32602, `Unknown tool: ${name}`));
+            out.push(ok(m.id, text(await callTool(who, name, args, req))));
           } catch (e) {
-            out.push(ok(m.id, text(e instanceof HttpError ? e.message : "Tool failed", true)));
+            out.push(ok(m.id, text(e instanceof HttpError ? e.message : (e as Error).message || "Tool failed", true)));
           }
           break;
         }
@@ -94,11 +105,18 @@ export async function POST(req: Request) {
     }
   }
 
-  if (!out.length) return new NextResponse(null, { status: 202 });
-  return NextResponse.json(Array.isArray(msg) ? out : out[0]);
+  if (!out.length) return reply(null, 202);
+  return reply(Array.isArray(msg) ? out : out[0]);
 }
 
-export async function GET() {
-  // No server-initiated stream; clients fall back to plain POST request/response.
-  return new NextResponse(null, { status: 405, headers: { Allow: "POST" } });
+export async function GET(req: Request) {
+  // Unauthenticated probes get the sign-in pointer; otherwise there's no server-initiated stream.
+  if (!(await principal(req))) return unauthorized(req);
+  return new Response(null, { status: 405, headers: { Allow: "POST", ...CORS } });
 }
+
+export async function DELETE() {
+  return new Response(null, { status: 405, headers: { Allow: "POST", ...CORS } });
+}
+
+export const OPTIONS = preflight;

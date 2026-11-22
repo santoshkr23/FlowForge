@@ -94,12 +94,36 @@ Before going live, both providers require real **Terms, Privacy and Refund** pag
 ## AI features
 Set `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` (choose with `AI_PROVIDER`). This powers the AI text step, AI agents and "Draft with AI". AI usage is billed to **your** key, so the credit costs in `lib/engine/catalog.ts` (5 per AI step, 10 + 2/tool per agent) are what protect your margin — adjust them to your token prices.
 
-## Customers connecting from Claude / ChatGPT (MCP)
-On Pro and above, customers create an API key under **API & MCP**, then add a remote MCP server:
-- URL: `https://YOUR_DOMAIN/api/mcp`
-- Header: `Authorization: Bearer ff_…`
+## Connect FlowForge to Claude (MCP connector)
+FlowForge is a remote MCP server with its own OAuth sign-in, so it works as a **custom connector** in claude.ai, Claude Desktop, Claude mobile and Claude Code — no API key to paste.
 
-Tools exposed: `list_workflows`, `run_workflow`, `get_execution`.
+1. In Claude: **Settings → Connectors → Add custom connector**
+2. Name: `FlowForge`, URL: `https://YOUR_DOMAIN/api/mcp` (leave the OAuth fields empty)
+3. **Connect** → sign in to FlowForge → **Allow**
+
+Claude Code: `claude mcp add --transport http flowforge https://YOUR_DOMAIN/api/mcp`
+
+Tools: `list_social_accounts`, `create_social_post` (now / schedule / draft, pictures by URL), `list_social_posts`, `cancel_social_post`, `import_post_from_link`, `suggest_hashtags`, `list_workflows`, `run_workflow`, `get_execution`.
+
+How it works: `/api/mcp` answers unauthenticated calls with `401` + `WWW-Authenticate: Bearer resource_metadata=…`; `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server` describe the OAuth server; clients register with Dynamic Client Registration (`/api/mcp-oauth/register`) or a Client ID Metadata Document; users approve on `/oauth/authorize`; `/api/mcp-oauth/token` issues 1-hour access tokens and rotating 60-day refresh tokens (PKCE S256 required). Connected apps are listed (and can be disconnected) under **API & MCP**. Scripts can still use `Authorization: Bearer ff_…` API keys.
+
+Needs the Pro plan, except for people listed in `ADMIN_EMAILS`. Claude must be able to reach your domain over HTTPS.
+
+## Host on your own VPS (Hostinger KVM, DigitalOcean…)
+Docker image + Postgres, behind your existing reverse proxy (or a bundled Caddy for automatic HTTPS).
+
+```bash
+git clone https://github.com/santoshkr23/FlowForge.git && cd FlowForge
+bash deploy/install.sh        # installs Docker if needed, writes .env with fresh secrets, builds, starts, adds a daily DB backup
+```
+
+- App listens on `127.0.0.1:3100` (change `FLOWFORGE_PORT` in `.env` if another site uses it)
+- Other sites already on ports 80/443? Add `deploy/Caddyfile` or `deploy/nginx-flowforge.conf` to that proxy. Nothing on 80/443? `docker compose -f docker-compose.prod.yml --profile caddy up -d` gets HTTPS automatically
+- Point a DNS **A record** for your FlowForge domain at the VPS IP before starting Caddy/certbot
+- Moving from Render? Put the **same `ENCRYPTION_KEY`** in `.env`, then `bash deploy/move-from-neon.sh "<Neon connection string>"` to copy your data (or set `DATABASE_URL` to Neon and keep using it)
+- After moving, update every OAuth app's redirect URL (LinkedIn etc.) to `https://YOUR_DOMAIN/api/oauth/callback`
+- Updates: `bash deploy/update.sh` · Backups: `deploy/backups/` (14 days) · Health: `/api/health`
+- Memory: the app is capped at 1.5 GB and Postgres at 768 MB, leaving room for other sites on a KVM 2
 
 ## Adding a new app
 1. Add its metadata and fields to `CATALOG` in `lib/engine/catalog.ts` (and credentials shape to `APPS` if it needs a login).

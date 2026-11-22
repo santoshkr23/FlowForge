@@ -281,3 +281,47 @@ export const watches = pgTable(
 export type Watch = typeof watches.$inferSelect;
 export type Post = typeof posts.$inferSelect;
 export type Media = typeof media.$inferSelect;
+
+// ── OAuth server for the MCP connector (Claude, ChatGPT and other MCP clients sign in to FlowForge) ──
+
+/** Clients registered through Dynamic Client Registration (RFC 7591). CIMD clients (https client_id) aren't stored. */
+export const mcpClients = pgTable("mcp_clients", {
+  id: text("id").primaryKey(), // the client_id
+  name: text("name").notNull().default("MCP client"),
+  redirectUris: jsonb("redirect_uris").$type<string[]>().notNull(),
+  createdAt: createdAt(),
+});
+
+/** Short-lived authorization codes (stored hashed). */
+export const mcpCodes = pgTable("mcp_codes", {
+  hash: text("hash").primaryKey(),
+  clientId: text("client_id").notNull(),
+  clientName: text("client_name").notNull().default("MCP client"),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  orgId: text("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  redirectUri: text("redirect_uri").notNull(),
+  codeChallenge: text("code_challenge").notNull(),
+  scope: text("scope").notNull().default("mcp"),
+  resource: text("resource"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+/** Access + refresh tokens given to MCP clients (stored hashed). One row per connection; refresh rotates both. */
+export const mcpTokens = pgTable(
+  "mcp_tokens",
+  {
+    id: id(),
+    accessHash: text("access_hash").notNull(),
+    refreshHash: text("refresh_hash").notNull(),
+    clientId: text("client_id").notNull(),
+    clientName: text("client_name").notNull().default("MCP client"),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    orgId: text("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+    scope: text("scope").notNull().default("mcp"),
+    accessExpiresAt: timestamp("access_expires_at", { withTimezone: true }).notNull(),
+    refreshExpiresAt: timestamp("refresh_expires_at", { withTimezone: true }).notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("mcp_tokens_access").on(t.accessHash), uniqueIndex("mcp_tokens_refresh").on(t.refreshHash), index("mcp_tokens_org").on(t.orgId)],
+);

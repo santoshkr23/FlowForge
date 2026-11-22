@@ -22,7 +22,10 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     setError("");
     try {
       await api(`/api/auth/${mode}`, { body: mode === "signup" ? { name, email, password, invite } : { email, password, invite } });
-      router.push(plan ? `/app/billing?plan=${plan}` : "/app");
+      const next = sp.get("next");
+      // only same-site paths (e.g. the "Connect to Claude" consent screen)
+      if (next && next.startsWith("/") && !next.startsWith("//")) window.location.assign(next);
+      else router.push(plan ? `/app/billing?plan=${plan}` : "/app");
       router.refresh();
     } catch (err) {
       setError((err as Error).message);

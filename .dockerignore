@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.pglite
+*.log
+.env
+.env.*
+!.env.example
+tests
+tsconfig.tsbuildinfo
+deploy/backups

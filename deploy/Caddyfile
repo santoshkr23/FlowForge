@@ -1,0 +1,17 @@
+# Add this block to the Caddyfile you already use for your other sites (e.g. /etc/caddy/Caddyfile),
+# replace the domain, then:  sudo systemctl reload caddy   (or: docker exec <caddy> caddy reload --config /etc/caddy/Caddyfile)
+#
+# If your Caddy runs in Docker, use host.docker.internal:3100 (with extra_hosts: ["host.docker.internal:host-gateway"])
+# instead of 127.0.0.1:3100.
+flowforge.example.com {
+	encode zstd gzip
+	request_body {
+		max_size 25MB
+	}
+	reverse_proxy 127.0.0.1:3100 {
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+}

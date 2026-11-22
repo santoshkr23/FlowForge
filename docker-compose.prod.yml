@@ -1,0 +1,73 @@
+# FlowForge on a VPS (Hostinger KVM, DigitalOcean, any Ubuntu server with Docker).
+#
+#   cp deploy/.env.production.example .env   # then fill it in (or run deploy/install.sh)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# The app listens on 127.0.0.1:${FLOWFORGE_PORT:-3100}. Put your existing reverse proxy (Caddy, Nginx,
+# Traefik) in front of it — see deploy/Caddyfile and deploy/nginx-flowforge.conf — or start the bundled
+# Caddy with:  docker compose -f docker-compose.prod.yml --profile caddy up -d
+name: flowforge
+
+services:
+  app:
+    build: .
+    image: flowforge:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://flowforge:${POSTGRES_PASSWORD}@db:5432/flowforge}
+    ports:
+      - "127.0.0.1:${FLOWFORGE_PORT:-3100}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flowforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: flowforge
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowforge -d flowforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # Optional: HTTPS reverse proxy with automatic Let's Encrypt certificates.
+  # Only use it if nothing else on the server is using ports 80/443.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["caddy"]
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      FLOWFORGE_DOMAIN: ${FLOWFORGE_DOMAIN:?set FLOWFORGE_DOMAIN in .env}
+    volumes:
+      - ./deploy/Caddyfile.bundled:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

@@ -4,6 +4,9 @@ import { db, schema } from "@/lib/db";
 import { Body, PageHead } from "@/components/app/PageHead";
 import { ApiKeys } from "@/components/app/ApiKeys";
 import { planAllows } from "@/lib/plans";
+import { headers } from "next/headers";
+import { siteUrl } from "@/lib/oauth/providers";
+import { McpConnect } from "@/components/app/McpConnect";
 
 export const metadata = { title: "API & MCP" };
 
@@ -15,7 +18,13 @@ export default async function Settings() {
     .where(eq(schema.apiKeys.orgId, ctx.org.id))
     .orderBy(desc(schema.apiKeys.createdAt));
   const stores = await db.select({ name: schema.dataStores.name, records: schema.dataStores.records, updatedAt: schema.dataStores.updatedAt }).from(schema.dataStores).where(eq(schema.dataStores.orgId, ctx.org.id));
-  const base = process.env.APP_URL ?? "http://localhost:3000";
+  const base = siteUrl({ headers: await headers(), url: "http://localhost" });
+  const mcp = await db
+    .select({ id: schema.mcpTokens.id, clientName: schema.mcpTokens.clientName, userEmail: schema.users.email, createdAt: schema.mcpTokens.createdAt, lastUsedAt: schema.mcpTokens.lastUsedAt })
+    .from(schema.mcpTokens)
+    .innerJoin(schema.users, eq(schema.users.id, schema.mcpTokens.userId))
+    .where(eq(schema.mcpTokens.orgId, ctx.org.id))
+    .orderBy(desc(schema.mcpTokens.createdAt));
 
   return (
     <>
@@ -28,25 +37,11 @@ export default async function Settings() {
         />
 
         <section className="mt-10 grid gap-6 lg:grid-cols-2">
-          <div className="panel p-5">
-            <h2 className="text-lg">Use from an AI assistant (MCP)</h2>
-            <p className="mt-2 text-sm text-ink-soft">Add a remote MCP server in Claude, ChatGPT or any MCP client:</p>
-            <dl className="mt-3 space-y-2 text-sm">
-              <div>
-                <dt className="font-medium">Server URL</dt>
-                <dd>
-                  <code className="block break-all rounded bg-canvas p-2 font-mono text-xs">{base}/api/mcp</code>
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium">Header</dt>
-                <dd>
-                  <code className="block rounded bg-canvas p-2 font-mono text-xs">Authorization: Bearer ff_your_key</code>
-                </dd>
-              </div>
-            </dl>
-            <p className="mt-3 text-sm text-ink-soft">The assistant can list your workflows, run one with input, and read run results.</p>
-          </div>
+          <McpConnect
+            url={`${base}/api/mcp`}
+            canManage={hasRole(ctx.role, "ADMIN")}
+            connections={mcp.map((c) => ({ ...c, createdAt: c.createdAt.toISOString(), lastUsedAt: c.lastUsedAt?.toISOString() ?? null }))}
+          />
           <div className="panel p-5">
             <h2 className="text-lg">REST API</h2>
             <pre className="mt-3 overflow-x-auto rounded bg-canvas p-3 font-mono text-xs leading-relaxed">{`# list workflows
