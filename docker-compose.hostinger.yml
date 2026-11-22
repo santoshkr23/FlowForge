@@ -2,12 +2,12 @@
 # URL to paste:  https://github.com/santoshkr23/FlowForge/blob/main/docker-compose.hostinger.yml
 # Then fill in the environment variables Docker Manager shows (APP_URL, POSTGRES_PASSWORD, AUTH_SECRET,
 # ENCRYPTION_KEY, ADMIN_EMAILS, and LinkedIn/AI keys if you use them) and click Deploy.
-# Docker builds the app straight from this GitHub repo — no image registry needed.
+# The app image is built by GitHub and pulled from ghcr.io — nothing is built on the server.
 services:
   app:
-    build:
-      context: https://github.com/santoshkr23/FlowForge.git#main
-    image: flowforge-app:latest
+    # built by GitHub Actions on every push (.github/workflows/docker-image.yml)
+    image: ghcr.io/santoshkr23/flowforge:latest
+    pull_policy: always
     restart: unless-stopped
     ports:
       # No domain yet? Set FLOWFORGE_BIND=0.0.0.0 and open http://YOUR-SERVER-IP:3100
