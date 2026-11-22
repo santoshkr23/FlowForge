@@ -1,0 +1,68 @@
+# FlowForge for Hostinger Docker Manager (Compose → URL).
+# URL to paste:  https://github.com/santoshkr23/FlowForge/blob/main/docker-compose.hostinger.yml
+# Then fill in the environment variables Docker Manager shows (APP_URL, POSTGRES_PASSWORD, AUTH_SECRET,
+# ENCRYPTION_KEY, ADMIN_EMAILS, and LinkedIn/AI keys if you use them) and click Deploy.
+# Docker builds the app straight from this GitHub repo — no image registry needed.
+services:
+  app:
+    build:
+      context: https://github.com/santoshkr23/FlowForge.git#main
+    image: flowforge-app:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FLOWFORGE_PORT:-3100}:3000"
+    environment:
+      APP_URL: ${APP_URL:?Set APP_URL to your FlowForge address, e.g. https://flowforge.example.com}
+      DATABASE_URL: postgresql://flowforge:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/flowforge
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET (64 random hex characters)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY - the same one you used on Render}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      LINKEDIN_CLIENT_ID: ${LINKEDIN_CLIENT_ID:-}
+      LINKEDIN_CLIENT_SECRET: ${LINKEDIN_CLIENT_SECRET:-}
+      LINKEDIN_VERSION: ${LINKEDIN_VERSION:-202608}
+      FACEBOOK_CLIENT_ID: ${FACEBOOK_CLIENT_ID:-}
+      FACEBOOK_CLIENT_SECRET: ${FACEBOOK_CLIENT_SECRET:-}
+      TWITTER_CLIENT_ID: ${TWITTER_CLIENT_ID:-}
+      TWITTER_CLIENT_SECRET: ${TWITTER_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flowforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: flowforge
+    volumes:
+      - flowforge_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowforge -d flowforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+volumes:
+  flowforge_pgdata:
