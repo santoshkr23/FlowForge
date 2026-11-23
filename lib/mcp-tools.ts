@@ -10,6 +10,7 @@ import { rewritePost, type RewriteStyle, type TagMode } from "./social/rewrite";
 import { suggestHashtags } from "./social/hashtags";
 import { downloadFile } from "./engine/net";
 import { randomToken } from "./crypto";
+import { downloadVideo } from "./social/media-store";
 import type { Org } from "@/db/schema";
 
 export type McpPrincipal = { org: Org; userId: string | null; admin: boolean; via: "oauth" | "apikey" };
@@ -46,7 +47,7 @@ export const TOOLS = [
   {
     name: "list_social_accounts",
     title: "List social accounts",
-    description: "List the social accounts connected in FlowForge (LinkedIn, Facebook Page, Instagram, X, Bluesky, Mastodon, Discord, Slack). Use the `target` values with create_social_post.",
+    description: "List the social accounts connected in FlowForge (LinkedIn, YouTube, Facebook Page, Instagram, X, Bluesky, Mastodon, Discord, Slack). Use the `target` values with create_social_post.",
     inputSchema: { type: "object", properties: {} },
     annotations: { readOnlyHint: true },
   },
@@ -63,6 +64,7 @@ export const TOOLS = [
         targets: { type: "array", items: { type: "string" }, description: "Account targets from list_social_accounts. Default: all LinkedIn accounts." },
         link: { type: "string", description: "Optional link (shown as a preview when there's no file)" },
         image_urls: { type: "array", items: { type: "string" }, description: "Public URLs of JPG/PNG/GIF/WebP pictures or one PDF to attach" },
+        video_url: { type: "string", description: "Public link to a video (for YouTube; use publish_youtube_video for titles and settings)" },
         media_ids: { type: "array", items: { type: "string" }, description: "File ids returned by import_post_from_link" },
         file_title: { type: "string", description: "PDF title shown on LinkedIn, or picture alt text" },
         schedule_at: { type: "string", description: "ISO 8601 date-time with time zone, e.g. 2026-11-23T09:00:00+05:30. Omit to post now." },
@@ -71,6 +73,41 @@ export const TOOLS = [
       required: ["text"],
     },
     annotations: { destructiveHint: true, openWorldHint: true },
+  },
+  {
+    name: "publish_youtube_video",
+    title: "Publish a YouTube video",
+    description:
+      "Upload a video to a connected YouTube channel — now, or at schedule_at. Give video_url (a public direct link; Google Drive and Dropbox share links work) or media_id (from list_media, for a file the user uploaded in FlowForge → Social). " +
+      "The description's #hashtags also become tags. Optionally also_share_to other accounts (they get the YouTube link). If several YouTube channels are connected, `channel` is required: ask the user which one.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        channel: { type: "string", description: "The YouTube account `target` from list_social_accounts" },
+        video_url: { type: "string" },
+        media_id: { type: "string" },
+        title: { type: "string", description: "Up to 100 characters" },
+        description: { type: "string", description: "Up to 5000 characters; hashtags here become tags" },
+        privacy: { type: "string", enum: ["public", "unlisted", "private"] },
+        tags: { type: "array", items: { type: "string" } },
+        category_id: { type: "string", description: "22 People & Blogs (default), 27 Education, 28 Science & Technology, 26 Howto & Style, 19 Travel & Events, 24 Entertainment, 10 Music, 20 Gaming, 25 News" },
+        made_for_kids: { type: "boolean", description: "Default false" },
+        shorts: { type: "boolean", description: "Vertical video under 3 minutes; adds #Shorts" },
+        thumbnail_url: { type: "string", description: "Public link to a JPG/PNG thumbnail (verified channels only)" },
+        schedule_at: { type: "string", description: "ISO 8601 date-time with time zone. Omit to publish now." },
+        also_share_to: { type: "array", items: { type: "string" }, description: "Other account targets to share the YouTube link to" },
+        draft: { type: "boolean", description: "Save to Social → Drafts instead" },
+      },
+      required: ["title", "privacy"],
+    },
+    annotations: { destructiveHint: true, openWorldHint: true },
+  },
+  {
+    name: "list_media",
+    title: "List uploaded files",
+    description: "Recent files uploaded to FlowForge (videos, pictures, PDFs) with ids to use as media_id.",
+    inputSchema: { type: "object", properties: { videos_only: { type: "boolean" } } },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "list_social_posts",
@@ -150,6 +187,7 @@ export async function callTool(who: McpPrincipal, name: string, a: Record<string
       if (!targets.length && !a.draft) throw new HttpError(422, "No target accounts. Call list_social_accounts, or connect LinkedIn in FlowForge → Connections.");
       const mediaIds = strs(a.media_ids);
       for (const u of strs(a.image_urls).slice(0, 20 - mediaIds.length)) mediaIds.push(await saveUrl(orgId, u));
+      if (str(a.video_url)) mediaIds.push((await downloadVideo(orgId, str(a.video_url))).id);
       const post = await createPost(
         orgId,
         who.userId,
@@ -157,6 +195,63 @@ export async function callTool(who: McpPrincipal, name: string, a: Record<string
         siteUrl(req),
       );
       return { id: post.id, status: post.status, scheduledAt: post.scheduledAt, results: post.results ?? undefined };
+    }
+
+    case "publish_youtube_video": {
+      const accounts = await socialAccounts(orgId);
+      const channels = accounts.filter((x) => x.channel === "youtube");
+      if (!channels.length) throw new HttpError(422, "No YouTube channel is connected. In FlowForge → Connections, add YouTube and sign in with the channel's Google account.");
+      let target = str(a.channel);
+      if (target && !channels.some((c) => c.target === target)) {
+        const byName = channels.filter((c) => c.name.toLowerCase().includes(target.toLowerCase()));
+        if (byName.length !== 1) throw new HttpError(422, `Unknown YouTube channel "${target}". Connected: ${channels.map((c) => `${c.name} (${c.target})`).join(", ")}`);
+        target = byName[0].target;
+      }
+      if (!target) {
+        if (channels.length > 1) throw new HttpError(422, `Several YouTube channels are connected — ask the user which one: ${channels.map((c) => `${c.name} (target ${c.target})`).join(", ")}`);
+        target = channels[0].target;
+      }
+      let mediaId = str(a.media_id);
+      if (!mediaId) {
+        if (!str(a.video_url)) throw new HttpError(422, "Give video_url (a public link) or media_id (from list_media)");
+        mediaId = (await downloadVideo(orgId, str(a.video_url))).id;
+      }
+      const thumbnailMediaId = str(a.thumbnail_url) ? await saveUrl(orgId, str(a.thumbnail_url)) : undefined;
+      const extra = strs(a.also_share_to).filter((t) => t !== target);
+      const post = await createPost(
+        orgId,
+        who.userId,
+        {
+          text: str(a.description),
+          mediaIds: [mediaId],
+          targets: [target, ...extra],
+          draft: a.draft === true,
+          scheduledAt: str(a.schedule_at) || undefined,
+          options: {
+            youtube: {
+              title: str(a.title).slice(0, 100),
+              privacy: (["public", "unlisted", "private"].includes(str(a.privacy)) ? str(a.privacy) : "private") as "public" | "unlisted" | "private",
+              tags: strs(a.tags),
+              categoryId: str(a.category_id) || undefined,
+              madeForKids: a.made_for_kids === true,
+              shorts: a.shorts === true,
+              thumbnailMediaId,
+            },
+          },
+        },
+        siteUrl(req),
+      );
+      return { id: post.id, status: post.status, scheduledAt: post.scheduledAt, results: post.results ?? undefined };
+    }
+
+    case "list_media": {
+      const rows = await db
+        .select({ id: schema.media.id, name: schema.media.name, mime: schema.media.mime, size: schema.media.size, createdAt: schema.media.createdAt })
+        .from(schema.media)
+        .where(eq(schema.media.orgId, orgId))
+        .orderBy(desc(schema.media.createdAt))
+        .limit(50);
+      return rows.filter((r) => !a.videos_only || r.mime.startsWith("video/")).map((r) => ({ ...r, size_mb: Math.round((r.size / 1048576) * 10) / 10 }));
     }
 
     case "list_social_posts": {

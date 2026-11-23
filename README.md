@@ -94,6 +94,13 @@ Before going live, both providers require real **Terms, Privacy and Refund** pag
 ## AI features
 Set `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` (choose with `AI_PROVIDER`). This powers the AI text step, AI agents and "Draft with AI". AI usage is billed to **your** key, so the credit costs in `lib/engine/catalog.ts` (5 per AI step, 10 + 2/tool per agent) are what protect your margin — adjust them to your token prices.
 
+## YouTube publishing
+Connections → **YouTube** → sign in with the Google account that owns the channel and pick the channel (Brand Accounts work). Uses `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`; in Google Cloud enable **YouTube Data API v3** and add `https://YOUR_DOMAIN/api/oauth/callback` as a redirect URI.
+
+On **Social**, attach a video (upload, or paste a Google Drive / Dropbox link), tick the channel, set title / visibility / category / kids / Shorts / thumbnail, and post now or schedule. Other ticked accounts get the YouTube link. Videos stream to disk (`MEDIA_DIR`, default `./data/media`; up to `MAX_VIDEO_MB`, default 1024).
+
+Limits from Google: a new API project gets 10,000 quota units a day (≈6 uploads); videos uploaded by a project that hasn't passed YouTube's API audit stay **private** until you make them public in YouTube Studio or the project is audited. Custom thumbnails need a verified channel.
+
 ## Connect FlowForge to Claude (MCP connector)
 FlowForge is a remote MCP server with its own OAuth sign-in, so it works as a **custom connector** in claude.ai, Claude Desktop, Claude mobile and Claude Code — no API key to paste.
 
@@ -103,7 +110,7 @@ FlowForge is a remote MCP server with its own OAuth sign-in, so it works as a **
 
 Claude Code: `claude mcp add --transport http flowforge https://YOUR_DOMAIN/api/mcp`
 
-Tools: `list_social_accounts`, `create_social_post` (now / schedule / draft, pictures by URL), `list_social_posts`, `cancel_social_post`, `import_post_from_link`, `suggest_hashtags`, `list_workflows`, `run_workflow`, `get_execution`.
+Tools: `list_social_accounts`, `publish_youtube_video`, `list_media`, `create_social_post` (now / schedule / draft, pictures by URL), `list_social_posts`, `cancel_social_post`, `import_post_from_link`, `suggest_hashtags`, `list_workflows`, `run_workflow`, `get_execution`.
 
 How it works: `/api/mcp` answers unauthenticated calls with `401` + `WWW-Authenticate: Bearer resource_metadata=…`; `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server` describe the OAuth server; clients register with Dynamic Client Registration (`/api/mcp-oauth/register`) or a Client ID Metadata Document; users approve on `/oauth/authorize`; `/api/mcp-oauth/token` issues 1-hour access tokens and rotating 60-day refresh tokens (PKCE S256 required). Connected apps are listed (and can be disconnected) under **API & MCP**. Scripts can still use `Authorization: Bearer ff_…` API keys.
 

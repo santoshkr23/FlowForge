@@ -38,7 +38,7 @@ export default async function SocialPage() {
   const accounts = accountsFrom(conns);
   return (
     <>
-      <PageHead title="Social" sub="Write once, post a picture, PDF carousel or text to all your connected accounts — now or on a schedule." />
+      <PageHead title="Social" sub="Write once, post a video to YouTube, a picture, PDF carousel or text to all your connected accounts — now or on a schedule." />
       <Body>
         <Social
           accounts={accounts}

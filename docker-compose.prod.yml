@@ -18,6 +18,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://flowforge:${POSTGRES_PASSWORD}@db:5432/flowforge}
     ports:
       - "${FLOWFORGE_BIND:-127.0.0.1}:${FLOWFORGE_PORT:-3100}:3000"
+    volumes:
+      - flowforge_media:/app/data/media   # uploaded videos
     depends_on:
       db:
         condition: service_healthy
@@ -68,6 +70,7 @@ services:
     depends_on: [app]
 
 volumes:
+  flowforge_media:
   pgdata:
   caddy_data:
   caddy_config:

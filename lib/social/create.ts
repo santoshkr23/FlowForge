@@ -1,6 +1,8 @@
 /** Create (and maybe publish) a social post — shared by the Social page API and the MCP server. */
 import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "../db";
+import type { PostOptions } from "@/db/schema";
+import { isVideo } from "./media-store";
 import { HttpError } from "../http";
 import { audit } from "../audit";
 import { accountsFrom, CHANNELS, xLength } from "./channels";
@@ -15,6 +17,7 @@ export type NewPost = {
   draft?: boolean;
   fromDraft?: string;
   scheduledAt?: string;
+  options?: PostOptions;
 };
 
 export async function socialAccounts(orgId: string) {
@@ -34,14 +37,21 @@ export async function createPost(orgId: string, userId: string | null, b: NewPos
   if (!b.draft && !targets.length) throw new HttpError(422, "Pick at least one account");
   for (const t of targets) if (!accounts.has(t)) throw new HttpError(422, "One of the selected accounts isn't connected any more");
 
+  let hasVideo = false;
   if (mediaIds.length) {
-    const ms = await db.select({ id: schema.media.id }).from(schema.media).where(and(inArray(schema.media.id, mediaIds), eq(schema.media.orgId, orgId)));
+    const ms = await db.select({ id: schema.media.id, mime: schema.media.mime }).from(schema.media).where(and(inArray(schema.media.id, mediaIds), eq(schema.media.orgId, orgId)));
     if (ms.length !== mediaIds.length) throw new HttpError(422, "Attached file not found");
+    hasVideo = ms.some((m) => isVideo(m.mime));
+    if (ms.filter((m) => isVideo(m.mime)).length > 1) throw new HttpError(422, "Attach one video per post");
   }
+  const channels = targets.map((t) => accounts.get(t)?.channel);
+  if (!b.draft && channels.includes("youtube") && !hasVideo) throw new HttpError(422, "YouTube needs a video — attach an MP4/MOV file or untick YouTube");
+  if (!b.draft && hasVideo && channels.some((c) => c !== "youtube") && !channels.includes("youtube"))
+    throw new HttpError(422, "Only YouTube can take the video itself. Tick your YouTube channel too — the other accounts will get the YouTube link.");
   // catch the obvious problems before anything is posted
   for (const t of b.draft ? [] : targets) {
     const a = accounts.get(t)!;
-    if (a.channel === "instagram" && !mediaIds.length) throw new HttpError(422, "Instagram needs a picture — attach one or untick Instagram");
+    if (a.channel === "instagram" && (!mediaIds.length || (hasVideo && mediaIds.length === 1))) throw new HttpError(422, "Instagram needs a picture — attach one or untick Instagram");
     if (a.channel === "x" && xLength([b.text, b.link].filter(Boolean).join("\n\n")) > 280) throw new HttpError(422, "Too long for X (280 characters, links count as 23). Shorten it or untick X.");
     const lim = CHANNELS[a.channel].limit;
     if (a.channel !== "x" && lim && [...b.text].length > lim) throw new HttpError(422, `Too long for ${CHANNELS[a.channel].name} (${lim} characters)`);
@@ -61,6 +71,7 @@ export async function createPost(orgId: string, userId: string | null, b: NewPos
       mediaIds,
       mediaTitle: b.mediaTitle || null,
       targets,
+      options: b.options ?? null,
       baseUrl,
       status: b.draft ? "draft" : "scheduled",
       scheduledAt: b.draft ? when : later ? when : new Date(),

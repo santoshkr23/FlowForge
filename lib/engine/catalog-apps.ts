@@ -312,7 +312,7 @@ export const APP_MODULES: ModuleMeta[] = [
     color: C.youtube,
     credits: 3,
     fields: [
-      conn("google_oauth", "Google account"),
+      conn("youtube,google_oauth", "YouTube channel"),
       t("videoUrl", "Video URL", { required: true, help: "Public link to an MP4 or MOV file, up to 256 MB." }),
       t("title", "Title", { required: true }),
       ta("description", "Description"),
@@ -332,7 +332,7 @@ export const APP_MODULES: ModuleMeta[] = [
     category: "Social media",
     app: "youtube",
     color: C.youtube,
-    fields: [conn("google_oauth", "Google account"), t("videoId", "Video ID", { required: true })],
+    fields: [conn("youtube,google_oauth", "YouTube channel"), t("videoId", "Video ID", { required: true })],
     outputs: ["title", "views", "likes", "comments", "publishedAt"],
   }),
   act({
@@ -879,6 +879,12 @@ export const APP_DEFS: Record<string, AppDef> = {
     name: "Google (Gmail, Drive, Calendar, YouTube, Sheets)",
     oauth: "google",
     help: "One sign-in covers Gmail, Drive, Calendar, Sheets and YouTube.",
+    fields: [],
+  },
+  youtube: {
+    name: "YouTube",
+    oauth: "youtube",
+    help: "Sign in with the Google account that owns the channel, then pick the channel. Uses the same Google app keys (GOOGLE_CLIENT_ID) — enable 'YouTube Data API v3' in Google Cloud.",
     fields: [],
   },
   microsoft: { name: "Microsoft (Outlook, Teams)", oauth: "microsoft", help: "Sign in with a work, school or personal Microsoft account.", fields: [] },

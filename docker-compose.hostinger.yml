@@ -36,6 +36,8 @@ services:
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+    volumes:
+      - flowforge_media:/app/data/media   # uploaded videos
     depends_on:
       db:
         condition: service_healthy
@@ -67,4 +69,5 @@ services:
           memory: 768M
 
 volumes:
+  flowforge_media:
   flowforge_pgdata:

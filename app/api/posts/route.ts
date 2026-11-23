@@ -42,6 +42,22 @@ const Body = z.object({
   /** the draft this post was made from — removed once posted/scheduled */
   fromDraft: z.string().optional(),
   scheduledAt: z.string().datetime({ offset: true }).optional(),
+  options: z
+    .object({
+      youtube: z
+        .object({
+          title: z.string().max(100).optional(),
+          privacy: z.enum(["public", "unlisted", "private"]).optional(),
+          madeForKids: z.boolean().optional(),
+          tags: z.array(z.string().max(100)).max(50).optional(),
+          categoryId: z.string().max(4).optional(),
+          thumbnailMediaId: z.string().optional(),
+          notifySubscribers: z.boolean().optional(),
+          shorts: z.boolean().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 /** Create a post. Without scheduledAt it is published right away. */

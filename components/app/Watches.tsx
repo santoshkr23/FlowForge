@@ -29,7 +29,7 @@ export type WatchRow = {
   postsMade: number;
 };
 
-const ICON: Record<Channel, string> = { linkedin: "linkedin", facebook: "facebook", instagram: "instagram", x: "twitter", bluesky: "bluesky", mastodon: "mastodon", discord: "discord", slack: "slack" };
+const ICON: Record<Channel, string> = { linkedin: "linkedin", facebook: "facebook", instagram: "instagram", x: "twitter", bluesky: "bluesky", mastodon: "mastodon", discord: "discord", slack: "slack", youtube: "youtube" };
 const EVERY: [number, string][] = [
   [30, "30 minutes"],
   [60, "hour"],

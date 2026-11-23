@@ -1,8 +1,8 @@
 /** Social channels shared by the server publisher and the composer UI (no server imports here). */
 
-export type Channel = "linkedin" | "facebook" | "instagram" | "x" | "bluesky" | "mastodon" | "discord" | "slack";
+export type Channel = "linkedin" | "facebook" | "instagram" | "x" | "bluesky" | "mastodon" | "discord" | "slack" | "youtube";
 
-export const CHANNELS: Record<Channel, { name: string; limit?: number; media: "image+pdf" | "image" | "image-required" | "link"; color: string }> = {
+export const CHANNELS: Record<Channel, { name: string; limit?: number; media: "image+pdf" | "image" | "image-required" | "link" | "video-required"; color: string }> = {
   linkedin: { name: "LinkedIn", limit: 3000, media: "image+pdf", color: "#0a66c2" },
   facebook: { name: "Facebook Page", limit: 63206, media: "image", color: "#1877f2" },
   instagram: { name: "Instagram", limit: 2200, media: "image-required", color: "#d62976" },
@@ -10,6 +10,7 @@ export const CHANNELS: Record<Channel, { name: string; limit?: number; media: "i
   bluesky: { name: "Bluesky", limit: 300, media: "image", color: "#1185fe" },
   mastodon: { name: "Mastodon", limit: 500, media: "image", color: "#6364ff" },
   discord: { name: "Discord", limit: 2000, media: "image+pdf", color: "#5865f2" },
+  youtube: { name: "YouTube", limit: 5000, media: "video-required", color: "#ff0000" },
   slack: { name: "Slack", limit: 40000, media: "link", color: "#4a154b" },
 };
 
@@ -21,6 +22,8 @@ const APP_CHANNELS: Record<string, Channel[]> = {
   mastodon: ["mastodon"],
   discord: ["discord"],
   slack: ["slack"],
+  youtube: ["youtube"],
+  google_oauth: ["youtube"],
 };
 
 export type Account = { target: string; connectionId: string; channel: Channel; name: string; app: string };

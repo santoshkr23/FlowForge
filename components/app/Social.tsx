@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
-import { CalendarClock, Download, FilePen, FileText, Hash, ImageIcon, Paperclip, Repeat2, Send, Sparkles, Trash2, X as Close } from "lucide-react";
+import { CalendarClock, Download, Film, FilePen, FileText, Hash, ImageIcon, Paperclip, Repeat2, Send, Sparkles, Trash2, X as Close } from "lucide-react";
 import { AppIcon } from "../AppIcon";
 import { api } from "@/lib/client";
 import { timeAgo } from "@/lib/format";
@@ -25,7 +25,7 @@ type PostRow = {
 };
 type Upload = { id: string; name: string; mime: string; size: number; url: string };
 
-const ICON: Record<Channel, string> = { linkedin: "linkedin", facebook: "facebook", instagram: "instagram", x: "twitter", bluesky: "bluesky", mastodon: "mastodon", discord: "discord", slack: "slack" };
+const ICON: Record<Channel, string> = { linkedin: "linkedin", facebook: "facebook", instagram: "instagram", x: "twitter", bluesky: "bluesky", mastodon: "mastodon", discord: "discord", slack: "slack", youtube: "youtube" };
 const STATUS: Record<string, [string, string]> = {
   scheduled: ["Scheduled", "bg-spark-tint text-ink"],
   posting: ["Posting…", "bg-spark-tint text-ink"],
@@ -47,6 +47,12 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
   const [files, setFiles] = useState<(Upload & { preview?: string })[]>([]);
   const file = files[0] ?? null;
   const hasPdf = files.some((f) => f.mime === "application/pdf");
+  const hasVideo = files.some((f) => f.mime.startsWith("video/"));
+  const [progress, setProgress] = useState<number | null>(null);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [yt, setYt] = useState({ title: "", privacy: "public", categoryId: "22", madeForKids: false, shorts: false });
+  const [thumb, setThumb] = useState<Upload | null>(null);
+  const thumbRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [uploading, setUploading] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
@@ -84,10 +90,12 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
     if (a.channel === "x" && xLength(fullText) > 280) out.push(`${a.name}: ${xLength(fullText)}/280 characters`);
     else if (a.channel === "bluesky" && [...fullText].length > 300) out.push(`${a.name}: ${[...fullText].length}/300 characters`);
     else if (c.limit && a.channel !== "x" && [...text].length > c.limit) out.push(`${a.name}: over ${c.limit} characters`);
-    if (hasPdf && c.media !== "image+pdf" && a.channel !== "instagram") out.push(`${a.name}: PDF will be shared as a download link`);
+    if (hasPdf && c.media !== "image+pdf" && a.channel !== "instagram" && a.channel !== "youtube") out.push(`${a.name}: PDF will be shared as a download link`);
+    if (a.channel === "youtube" && !hasVideo) out.push(`${a.name}: YouTube needs a video`);
+    if (hasVideo && a.channel !== "youtube") out.push(`${a.name}: will get the YouTube link${chosen.some((x) => x.channel === "youtube") ? "" : " — tick a YouTube channel too"}`);
     return out;
   });
-  const blocking = warnings.filter((w) => !w.includes("download link"));
+  const blocking = warnings.filter((w) => !w.includes("download link") && !w.endsWith("will get the YouTube link"));
 
   function toggle(t: string) {
     setSelected((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]));
@@ -98,6 +106,12 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
     setMsg(null);
     try {
       for (const f of list.slice(0, 20 - files.length)) {
+        if (f.type.startsWith("video/") || /\.(mp4|m4v|mov|webm|mkv|avi)$/i.test(f.name)) {
+          const data = await uploadVideo(f);
+          setFiles((cur) => [...cur.filter((x) => !x.mime.startsWith("video/")), data]);
+          if (!yt.title) setYt((y) => ({ ...y, title: f.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").slice(0, 100) }));
+          continue;
+        }
         const fd = new FormData();
         fd.append("file", f);
         const res = await fetch("/api/media", { method: "POST", body: fd });
@@ -111,6 +125,58 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
     } finally {
       setUploading(false);
     }
+  }
+
+  /** Videos go up as the raw file (streamed to disk on the server), with a progress bar. */
+  function uploadVideo(f: File) {
+    return new Promise<Upload>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/media?name=${encodeURIComponent(f.name)}`);
+      xhr.setRequestHeader("content-type", f.type || "video/mp4");
+      xhr.upload.onprogress = (e) => e.lengthComputable && setProgress(Math.round((e.loaded / e.total) * 100));
+      xhr.onload = () => {
+        setProgress(null);
+        const data = (() => {
+          try {
+            return JSON.parse(xhr.responseText);
+          } catch {
+            return {};
+          }
+        })();
+        if (xhr.status >= 200 && xhr.status < 300) resolve(data as Upload);
+        else reject(new Error(data.error ?? (xhr.status === 413 ? "The video is too big for the server" : `Upload failed (${xhr.status})`)));
+      };
+      xhr.onerror = () => {
+        setProgress(null);
+        reject(new Error("Upload failed — check your connection"));
+      };
+      xhr.send(f);
+    });
+  }
+
+  async function fetchVideo() {
+    if (!videoUrl.trim()) return;
+    setUploading(true);
+    setMsg(null);
+    try {
+      const data = await api<Upload>("/api/media/from-url", { body: { url: videoUrl.trim() } });
+      setFiles((cur) => [...cur.filter((x) => !x.mime.startsWith("video/")), data]);
+      if (!yt.title) setYt((y) => ({ ...y, title: data.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").slice(0, 100) }));
+      setVideoUrl("");
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function uploadThumb(f: File) {
+    const fd = new FormData();
+    fd.append("file", f);
+    const res = await fetch("/api/media", { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setMsg({ ok: false, text: data.error ?? "Thumbnail upload failed" });
+    setThumb({ ...(data as Upload), preview: URL.createObjectURL(f) } as Upload);
   }
 
   async function suggest() {
@@ -239,6 +305,9 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
           text,
           link: link.trim() || undefined,
           mediaIds: files.map((f) => f.id),
+          options: chosen.some((a) => a.channel === "youtube")
+            ? { youtube: { title: yt.title.trim() || undefined, privacy: yt.privacy, categoryId: yt.categoryId, madeForKids: yt.madeForKids, shorts: yt.shorts, thumbnailMediaId: thumb?.id } }
+            : undefined,
           mediaTitle: title.trim() || undefined,
           targets: selected,
           scheduledAt: mode === "later" ? new Date(when).toISOString() : undefined,
@@ -257,6 +326,8 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
         setText("");
         setLink("");
         setFiles([]);
+        setThumb(null);
+        setYt({ title: "", privacy: "public", categoryId: "22", madeForKids: false, shorts: false });
         setTitle("");
         setTags([]);
         setSrcName("");
@@ -463,19 +534,19 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
         {/* attachment + link */}
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <span className="label">Pictures or PDF</span>
+            <span className="label">Pictures, PDF or video</span>
             {files.length > 0 && (
               <div className="mb-2 space-y-2">
-                {hasPdf ? (
+                {hasPdf || hasVideo ? (
                   files.map((f) => (
                     <div key={f.id} className="flex items-center gap-3 rounded-lg border border-line p-2">
                       <div className="flex h-14 w-14 items-center justify-center rounded bg-bad-tint text-bad">
-                        <FileText size={22} />
+                        {f.mime.startsWith("video/") ? <Film size={22} /> : <FileText size={22} />}
                       </div>
                       <div className="min-w-0 flex-1 text-sm">
                         <div className="truncate font-medium">{f.name}</div>
                         <div className="text-xs text-ink-faint">
-                          {f.mime === "application/pdf" ? "PDF · shows as a swipeable carousel on LinkedIn" : "File"}
+                          {f.mime === "application/pdf" ? "PDF · shows as a swipeable carousel on LinkedIn" : f.mime.startsWith("video/") ? "Video · goes to YouTube" : "File"}
                           {f.size ? ` · ${kb(f.size)}` : ""}
                         </div>
                       </div>
@@ -509,11 +580,19 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
                   </div>
                 )}
                 <p className="text-xs text-ink-faint">
-                  {hasPdf ? "LinkedIn posts take one PDF." : `${files.length} picture${files.length > 1 ? "s" : ""} · LinkedIn and Facebook take up to 20, Instagram 10, Bluesky and Mastodon 4.`}
+                  {hasVideo ? "One video per post. Other accounts get the YouTube link." : hasPdf ? "LinkedIn posts take one PDF." : `${files.length} picture${files.length > 1 ? "s" : ""} · LinkedIn and Facebook take up to 20, Instagram 10, Bluesky and Mastodon 4.`}
                 </p>
               </div>
             )}
-            {!hasPdf && files.length < 20 && (
+            {progress !== null && (
+              <div className="mb-2">
+                <div className="h-2 overflow-hidden rounded-full bg-canvas">
+                  <div className="h-full bg-wire transition-all" style={{ width: `${progress}%` }} />
+                </div>
+                <p className="mt-1 text-xs text-ink-faint">Uploading video… {progress}%</p>
+              </div>
+            )}
+            {!hasPdf && !hasVideo && files.length < 20 && (
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
@@ -529,7 +608,7 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
                   <ImageIcon size={18} />
                   <FileText size={18} />
                 </span>
-                {uploading ? "Uploading…" : files.length ? "Add more pictures" : "Drop pictures or a PDF, or click — up to 20 MB each"}
+                {uploading ? "Uploading…" : files.length ? "Add more pictures" : "Drop pictures, a PDF or a video, or click"}
               </button>
             )}
             <input
@@ -537,13 +616,27 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
               type="file"
               hidden
               multiple
-              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.m4v,.webm,.mkv"
               onChange={(e) => {
                 upload([...(e.target.files ?? [])]);
                 e.target.value = "";
               }}
             />
-            {file && (
+            {!files.length && (
+              <div className="mt-2 flex gap-2">
+                <input
+                  className="input min-w-0 flex-1"
+                  placeholder="…or paste a video link (Google Drive, Dropbox)"
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                  aria-label="Video link"
+                />
+                <button type="button" className="btn-quiet shrink-0" disabled={uploading || !videoUrl.trim()} onClick={fetchVideo}>
+                  {uploading ? "Fetching…" : "Fetch"}
+                </button>
+              </div>
+            )}
+            {file && !hasVideo && (
               <input
                 className="input mt-2"
                 placeholder={hasPdf ? "Document title (shown on LinkedIn)" : "Describe the picture(s) (alt text)"}
@@ -563,6 +656,61 @@ export function Social({ accounts, canEdit, initialPosts }: { accounts: Account[
             <p className="mt-1 text-xs text-ink-faint">Without a file, LinkedIn and Facebook show it as a link preview.</p>
           </div>
         </div>
+
+        {chosen.some((a) => a.channel === "youtube") && (
+          <div className="space-y-3 rounded-lg border border-line p-3">
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              <AppIcon app="youtube" color={CHANNELS.youtube.color} size={11} /> YouTube details
+            </span>
+            <div>
+              <label className="label" htmlFor="yt-title">
+                Title <span className="font-normal text-ink-faint">({[...yt.title].length}/100)</span>
+              </label>
+              <input id="yt-title" className="input" maxLength={100} placeholder="Defaults to the first line of the post" value={yt.title} onChange={(e) => setYt({ ...yt, title: e.target.value })} />
+              <p className="mt-1 text-xs text-ink-faint">The post text becomes the description; its hashtags become tags.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <select className="input" value={yt.privacy} onChange={(e) => setYt({ ...yt, privacy: e.target.value })} aria-label="Visibility">
+                <option value="public">Public</option>
+                <option value="unlisted">Unlisted</option>
+                <option value="private">Private</option>
+              </select>
+              <select className="input" value={yt.categoryId} onChange={(e) => setYt({ ...yt, categoryId: e.target.value })} aria-label="Category">
+                <option value="22">People &amp; Blogs</option>
+                <option value="27">Education</option>
+                <option value="28">Science &amp; Technology</option>
+                <option value="26">Howto &amp; Style</option>
+                <option value="19">Travel &amp; Events</option>
+                <option value="24">Entertainment</option>
+                <option value="10">Music</option>
+                <option value="20">Gaming</option>
+                <option value="25">News &amp; Politics</option>
+              </select>
+              <select className="input" value={yt.madeForKids ? "yes" : "no"} onChange={(e) => setYt({ ...yt, madeForKids: e.target.value === "yes" })} aria-label="Made for kids">
+                <option value="no">Not made for kids</option>
+                <option value="yes">Made for kids</option>
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" checked={yt.shorts} onChange={(e) => setYt({ ...yt, shorts: e.target.checked })} /> It&apos;s a Short (vertical, under 3 min)
+              </label>
+              {thumb ? (
+                <span className="flex items-center gap-2">
+                  Thumbnail: {thumb.name}
+                  <button type="button" aria-label="Remove thumbnail" onClick={() => setThumb(null)}>
+                    <Close size={14} />
+                  </button>
+                </span>
+              ) : (
+                <button type="button" className="text-wire underline" onClick={() => thumbRef.current?.click()}>
+                  Add custom thumbnail
+                </button>
+              )}
+              <input ref={thumbRef} type="file" hidden accept="image/jpeg,image/png" onChange={(e) => e.target.files?.[0] && uploadThumb(e.target.files[0])} />
+            </div>
+          </div>
+        )}
 
         {/* when */}
         <div className="flex flex-wrap items-end gap-3">

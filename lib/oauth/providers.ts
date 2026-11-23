@@ -16,6 +16,8 @@ export type Provider = {
   extraAuthParams?: Record<string, string>;
   /** label for the connected account + any data later API calls need */
   identify?: (accessToken: string) => Promise<{ account?: string; extra?: Record<string, unknown> }>;
+  /** read <ID>_CLIENT_ID/_SECRET of another provider (YouTube uses the Google app) */
+  credentialsFrom?: string;
 };
 
 const META = () => process.env.META_GRAPH_VERSION ?? "v23.0";
@@ -46,6 +48,23 @@ export const PROVIDERS: Record<string, Provider> = {
     pkce: true,
     extraAuthParams: { access_type: "offline", prompt: "consent", include_granted_scopes: "true" },
     identify: async (t) => ({ account: (await getJson("https://openidconnect.googleapis.com/v1/userinfo", t)).email }),
+  },
+  // YouTube only: asks for YouTube permissions alone (no Gmail/Drive), and lets you pick the channel / Brand Account
+  youtube: {
+    id: "youtube",
+    name: "YouTube",
+    credentialsFrom: "google",
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"],
+    pkce: true,
+    extraAuthParams: { access_type: "offline", prompt: "select_account consent" },
+    identify: async (t) => {
+      const r = await getJson("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", t);
+      const ch = r.items?.[0];
+      if (!ch) throw new Error("This Google account has no YouTube channel");
+      return { account: ch.snippet?.customUrl ? `${ch.snippet.title} (${ch.snippet.customUrl})` : ch.snippet?.title, extra: { channelId: ch.id } };
+    },
   },
   microsoft: {
     id: "microsoft",
@@ -134,8 +153,8 @@ export const PROVIDERS: Record<string, Provider> = {
   },
 };
 
-export const clientId = (p: Provider) => process.env[`${p.id.toUpperCase()}_CLIENT_ID`] ?? "";
-export const clientSecret = (p: Provider) => process.env[`${p.id.toUpperCase()}_CLIENT_SECRET`] ?? "";
+export const clientId = (p: Provider) => process.env[`${(p.credentialsFrom ?? p.id).toUpperCase()}_CLIENT_ID`] ?? "";
+export const clientSecret = (p: Provider) => process.env[`${(p.credentialsFrom ?? p.id).toUpperCase()}_CLIENT_SECRET`] ?? "";
 export const providerConfigured = (id: string) => !!PROVIDERS[id] && !!clientId(PROVIDERS[id]) && !!clientSecret(PROVIDERS[id]);
 /** Public address of the site as seen by the browser (Render etc. pass it in forwarded headers). */
 export function originFromHeaders(h: { get(name: string): string | null }, fallbackUrl?: string): string {

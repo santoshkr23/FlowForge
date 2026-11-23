@@ -61,7 +61,7 @@ export async function POST(req: Request) {
               serverInfo: { name: "flowforge", title: "FlowForge", version: "1.1.0" },
               instructions:
                 "FlowForge runs automation workflows and publishes social media posts. Use list_social_accounts before creating a post, " +
-                "create_social_post to publish now / schedule / save a draft, import_post_from_link to turn a post link into clean text plus its pictures or PDF, " +
+                "create_social_post to publish now / schedule / save a draft, publish_youtube_video to upload videos to YouTube, import_post_from_link to turn a post link into clean text plus its pictures or PDF, " +
                 "and list_workflows + run_workflow for other automations. Posting to social accounts is public: confirm the text and accounts with the user before publishing.",
             }),
           );

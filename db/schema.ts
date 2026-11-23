@@ -212,11 +212,26 @@ export const media = pgTable(
     name: text("name").notNull(),
     mime: text("mime").notNull(),
     size: integer("size").notNull(),
-    data: bytea("data").notNull(),
+    /** small files (pictures, PDFs) live in the database */
+    data: bytea("data"),
+    /** big files (videos) live on disk under MEDIA_DIR; this is the file name there */
+    path: text("path"),
     createdAt: createdAt(),
   },
   (t) => [index("media_org").on(t.orgId)],
 );
+
+export type YouTubeOptions = {
+  title?: string;
+  privacy?: "public" | "unlisted" | "private";
+  madeForKids?: boolean;
+  tags?: string[];
+  categoryId?: string;
+  thumbnailMediaId?: string;
+  notifySubscribers?: boolean;
+  shorts?: boolean;
+};
+export type PostOptions = { youtube?: YouTubeOptions };
 
 export type PostResult = { target: string; app: string; account?: string; ok: boolean; url?: string; error?: string; note?: string; at: string };
 
@@ -234,6 +249,8 @@ export const posts = pgTable(
     mediaIds: jsonb("media_ids").$type<string[]>(),
     /** set when created by a profile watch */
     watchId: text("watch_id"),
+    /** per-platform settings, e.g. { youtube: { title, privacy, madeForKids, tags, categoryId, thumbnailMediaId } } */
+    options: jsonb("options").$type<PostOptions>(),
     targets: jsonb("targets").$type<string[]>().notNull(), // "connId" or "connId:instagram"
     baseUrl: text("base_url"), // public site address at creation, for media links
     status: text("status").notNull().default("scheduled"), // scheduled | posting | posted | partial | failed
