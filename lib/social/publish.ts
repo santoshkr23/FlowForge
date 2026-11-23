@@ -14,6 +14,7 @@ import { accountsFrom, CHANNELS, xLength, type Channel } from "./channels";
 import { isVideo, mediaStream } from "./media-store";
 export { accountsFrom, CHANNELS, xLength, type Account, type Channel } from "./channels";
 import { bskyLinkFacets, fbPage, fbPost, fbGet, igWaitReady, liText } from "../engine/modules/social";
+import { cfg } from "@/lib/config";
 
 export function mediaUrl(baseUrl: string | null | undefined, m: Pick<Media, "id" | "token" | "name">) {
   return `${(baseUrl ?? "").replace(/\/+$/, "")}/api/media/${m.id}/${m.token}/${encodeURIComponent(m.name)}`;
@@ -76,7 +77,7 @@ async function linkedin(j: Job): Promise<Out> {
     const u = await apiCall<{ sub: string }>("https://api.linkedin.com/v2/userinfo", { headers: { authorization: `Bearer ${accessToken}` } });
     author = `urn:li:person:${u.sub}`;
   }
-  const headers = { authorization: `Bearer ${accessToken}`, "linkedin-version": process.env.LINKEDIN_VERSION ?? "202608", "x-restli-protocol-version": "2.0.0" };
+  const headers = { authorization: `Bearer ${accessToken}`, "linkedin-version": cfg("LINKEDIN_VERSION") ?? "202608", "x-restli-protocol-version": "2.0.0" };
   let content: Record<string, unknown> | undefined;
   let text = post.text;
   let note: string | undefined;

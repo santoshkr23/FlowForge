@@ -94,6 +94,9 @@ Before going live, both providers require real **Terms, Privacy and Refund** pag
 ## AI features
 Set `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` (choose with `AI_PROVIDER`). This powers the AI text step, AI agents and "Draft with AI". AI usage is billed to **your** key, so the credit costs in `lib/engine/catalog.ts` (5 per AI step, 10 + 2/tool per agent) are what protect your margin — adjust them to your token prices.
 
+## API keys from the admin panel
+Open **Admin → API keys & settings** (the first account that signed up is the admin, unless `ADMIN_EMAILS` is set). Paste Google/YouTube, LinkedIn, Facebook, X, AI, Stripe, Razorpay and SMTP keys there — they're stored encrypted with `ENCRYPTION_KEY`, take priority over environment variables, and apply without a restart. The page also shows the exact redirect URL and Claude connector URL to copy. Only `DATABASE_URL`, `ENCRYPTION_KEY` and `AUTH_SECRET` must stay in the server's environment.
+
 ## YouTube publishing
 Connections → **YouTube** → sign in with the Google account that owns the channel and pick the channel (Brand Accounts work). Uses `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`; in Google Cloud enable **YouTube Data API v3** and add `https://YOUR_DOMAIN/api/oauth/callback` as a redirect URI.
 

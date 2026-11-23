@@ -3,6 +3,7 @@
  *   <ID>_CLIENT_ID / <ID>_CLIENT_SECRET in the environment, and the redirect URL
  *   {APP_URL}/api/oauth/callback  registered with the provider. See README → "One-click app sign-in".
  */
+import { cfg } from "@/lib/config";
 export type Provider = {
   id: string;
   name: string;
@@ -20,8 +21,8 @@ export type Provider = {
   credentialsFrom?: string;
 };
 
-const META = () => process.env.META_GRAPH_VERSION ?? "v23.0";
-const ZOHO = () => (process.env.ZOHO_ACCOUNTS_URL ?? "https://accounts.zoho.in").replace(/\/$/, "");
+const META = () => cfg("META_GRAPH_VERSION") ?? "v23.0";
+const ZOHO = () => (cfg("ZOHO_ACCOUNTS_URL") ?? "https://accounts.zoho.in").replace(/\/$/, "");
 
 async function getJson(url: string, token: string, init: RequestInit = {}) {
   const r = await fetch(url, { ...init, headers: { authorization: `Bearer ${token}`, ...(init.headers ?? {}) }, signal: AbortSignal.timeout(15_000) });
@@ -153,8 +154,8 @@ export const PROVIDERS: Record<string, Provider> = {
   },
 };
 
-export const clientId = (p: Provider) => process.env[`${(p.credentialsFrom ?? p.id).toUpperCase()}_CLIENT_ID`] ?? "";
-export const clientSecret = (p: Provider) => process.env[`${(p.credentialsFrom ?? p.id).toUpperCase()}_CLIENT_SECRET`] ?? "";
+export const clientId = (p: Provider) => cfg(`${(p.credentialsFrom ?? p.id).toUpperCase()}_CLIENT_ID`) ?? "";
+export const clientSecret = (p: Provider) => cfg(`${(p.credentialsFrom ?? p.id).toUpperCase()}_CLIENT_SECRET`) ?? "";
 export const providerConfigured = (id: string) => !!PROVIDERS[id] && !!clientId(PROVIDERS[id]) && !!clientSecret(PROVIDERS[id]);
 /** Public address of the site as seen by the browser (Render etc. pass it in forwarded headers). */
 export function originFromHeaders(h: { get(name: string): string | null }, fallbackUrl?: string): string {
@@ -168,7 +169,7 @@ export function originFromHeaders(h: { get(name: string): string | null }, fallb
 type ReqLike = { headers: { get(name: string): string | null }; url?: string };
 
 export function siteUrl(req?: ReqLike): string {
-  const env = (process.env.APP_URL ?? "").trim().replace(/\/+$/, "");
+  const env = (cfg("APP_URL") ?? "").trim().replace(/\/+$/, "");
   if (env && !/\/\/(localhost|127\.0\.0\.1)(:|$)/.test(env)) return env;
   return req ? originFromHeaders(req.headers, req.url) : env || "http://localhost:3000";
 }

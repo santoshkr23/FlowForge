@@ -43,6 +43,13 @@
       "when": 1795460070294,
       "tag": "0005_video_youtube",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795463817208,
+      "tag": "0006_app_settings",
+      "breakpoints": true
     }
   ]
 }

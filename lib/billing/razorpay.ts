@@ -9,8 +9,9 @@ import { db, schema } from "../db";
 import { applyPlan, addExtraCredits } from "../credits";
 import { CREDIT_PACK, PLANS } from "../plans";
 import type { Org, PlanId } from "@/db/schema";
+import { cfg } from "@/lib/config";
 
-export const razorpayEnabled = () => !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+export const razorpayEnabled = () => !!(cfg("RAZORPAY_KEY_ID") && cfg("RAZORPAY_KEY_SECRET"));
 
 const PLAN_ENV: Partial<Record<PlanId, string>> = {
   STARTER: "RAZORPAY_PLAN_STARTER",
@@ -20,7 +21,7 @@ const PLAN_ENV: Partial<Record<PlanId, string>> = {
 
 async function rzp<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   if (!razorpayEnabled()) throw new Error("Razorpay is not configured (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET)");
-  const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString("base64");
+  const auth = Buffer.from(`${cfg("RAZORPAY_KEY_ID")}:${cfg("RAZORPAY_KEY_SECRET")}`).toString("base64");
   const res = await fetch(`https://api.razorpay.com/v1${path}`, {
     method: init.method ?? "GET",
     headers: { authorization: `Basic ${auth}`, "content-type": "application/json" },
@@ -39,13 +40,13 @@ function safeEqualHex(a: string, b: string) {
 const hmac = (secret: string, payload: string) => createHmac("sha256", secret).update(payload).digest("hex");
 
 export async function razorpayCreateSubscription(org: Org, email: string, plan: PlanId) {
-  const planId = PLAN_ENV[plan] && process.env[PLAN_ENV[plan]!];
+  const planId = PLAN_ENV[plan] && cfg(PLAN_ENV[plan]!);
   if (!planId) throw new Error(`No Razorpay plan configured for ${plan}`);
   const sub = await rzp<{ id: string; short_url: string }>("/subscriptions", {
     method: "POST",
     body: { plan_id: planId, total_count: 120, customer_notify: 1, notes: { orgId: org.id, plan, email } },
   });
-  return { subscriptionId: sub.id, keyId: process.env.RAZORPAY_KEY_ID!, amount: PLANS[plan].inr * 100, planName: PLANS[plan].name };
+  return { subscriptionId: sub.id, keyId: cfg("RAZORPAY_KEY_ID")!, amount: PLANS[plan].inr * 100, planName: PLANS[plan].name };
 }
 
 export async function razorpayCreateCreditOrder(org: Org) {
@@ -53,17 +54,17 @@ export async function razorpayCreateCreditOrder(org: Org) {
     method: "POST",
     body: { amount: CREDIT_PACK.inr * 100, currency: "INR", receipt: `cr_${org.id}_${Date.now()}`.slice(0, 40), notes: { orgId: org.id, kind: "credits", credits: String(CREDIT_PACK.credits) } },
   });
-  return { orderId: order.id, amount: order.amount, keyId: process.env.RAZORPAY_KEY_ID! };
+  return { orderId: order.id, amount: order.amount, keyId: cfg("RAZORPAY_KEY_ID")! };
 }
 
 /** Verify the checkout handler response (subscription or order). */
 export function verifyCheckoutSignature(p: { paymentId: string; signature: string; subscriptionId?: string; orderId?: string }) {
   const payload = p.subscriptionId ? `${p.paymentId}|${p.subscriptionId}` : `${p.orderId}|${p.paymentId}`;
-  return safeEqualHex(hmac(process.env.RAZORPAY_KEY_SECRET ?? "", payload), p.signature);
+  return safeEqualHex(hmac(cfg("RAZORPAY_KEY_SECRET") ?? "", payload), p.signature);
 }
 
 export function verifyWebhookSignature(rawBody: string, signature: string) {
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  const secret = cfg("RAZORPAY_WEBHOOK_SECRET");
   if (!secret || !signature) return false;
   return safeEqualHex(hmac(secret, rawBody), signature);
 }

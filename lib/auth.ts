@@ -2,9 +2,10 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "./db";
 import type { Org, Role, User } from "@/db/schema";
+import { cfg } from "@/lib/config";
 
 const COOKIE = "ff_session";
 const secret = () => new TextEncoder().encode(process.env.AUTH_SECRET ?? "dev-secret-change-me-dev-secret-change-me");
@@ -24,7 +25,7 @@ export async function signSession(p: SessionPayload) {
  * sign-in silently fails.
  */
 export async function secureCookies() {
-  const app = (process.env.APP_URL ?? "").trim();
+  const app = (cfg("APP_URL") ?? "").trim();
   if (/^https:\/\//.test(app)) return true;
   if (/^http:\/\//.test(app)) return false;
   const h = await headers();
@@ -71,6 +72,7 @@ export async function loadCtx(s: SessionPayload): Promise<Ctx | null> {
     .limit(1);
   const r = rows[0];
   if (!r || r.u.disabled) return null;
+  await loadSiteOwner();
   return { user: r.u, org: r.o, role: r.m.role, isSuperAdmin: isSuperAdmin(r.u.email) };
 }
 
@@ -87,12 +89,22 @@ export async function requireCtx(): Promise<Ctx> {
   return ctx;
 }
 
+const og = globalThis as unknown as { __ffOwner?: string | null };
+
+/** With no ADMIN_EMAILS set, the first person who signed up (the site owner) is the admin. */
+export async function loadSiteOwner() {
+  if ((process.env.ADMIN_EMAILS ?? "").trim() || og.__ffOwner) return;
+  const [first] = await db.select({ email: schema.users.email }).from(schema.users).orderBy(asc(schema.users.createdAt)).limit(1);
+  og.__ffOwner = first?.email.toLowerCase() ?? null;
+}
+
 export function isSuperAdmin(email: string) {
-  return (process.env.ADMIN_EMAILS ?? "")
+  const list = (process.env.ADMIN_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
-    .filter(Boolean)
-    .includes(email.toLowerCase());
+    .filter(Boolean);
+  if (!list.length) return !!og.__ffOwner && og.__ffOwner === email.toLowerCase();
+  return list.includes(email.toLowerCase());
 }
 
 const RANK: Record<Role, number> = { VIEWER: 0, BUILDER: 1, ADMIN: 2, OWNER: 3 };

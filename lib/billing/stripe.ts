@@ -4,13 +4,16 @@ import { db, schema } from "../db";
 import { applyPlan, addExtraCredits } from "../credits";
 import { CREDIT_PACK } from "../plans";
 import type { Org, PlanId } from "@/db/schema";
+import { cfg } from "@/lib/config";
 
-let client: Stripe | null = null;
+let client: { key: string; s: Stripe } | null = null;
 export function stripe() {
-  if (!process.env.STRIPE_SECRET_KEY) throw new Error("Stripe is not configured (STRIPE_SECRET_KEY)");
-  return (client ??= new Stripe(process.env.STRIPE_SECRET_KEY));
+  const key = cfg("STRIPE_SECRET_KEY");
+  if (!key) throw new Error("Stripe is not configured (STRIPE_SECRET_KEY)");
+  if (client?.key !== key) client = { key, s: new Stripe(key) };
+  return client.s;
 }
-export const stripeEnabled = () => !!process.env.STRIPE_SECRET_KEY;
+export const stripeEnabled = () => !!cfg("STRIPE_SECRET_KEY");
 
 const PRICE_ENV: Partial<Record<PlanId, string>> = {
   STARTER: "STRIPE_PRICE_STARTER",
@@ -20,13 +23,13 @@ const PRICE_ENV: Partial<Record<PlanId, string>> = {
 
 function priceFor(plan: PlanId) {
   const key = PRICE_ENV[plan];
-  const id = key && process.env[key];
+  const id = key && cfg(key);
   if (!id) throw new Error(`No Stripe price configured for ${plan}`);
   return id;
 }
 
 function planForPrice(priceId: string): PlanId | null {
-  for (const [plan, key] of Object.entries(PRICE_ENV)) if (process.env[key!] === priceId) return plan as PlanId;
+  for (const [plan, key] of Object.entries(PRICE_ENV)) if (cfg(key!) === priceId) return plan as PlanId;
   return null;
 }
 
@@ -37,7 +40,7 @@ async function ensureCustomer(org: Org, email: string) {
   return c.id;
 }
 
-const appUrl = () => process.env.APP_URL ?? "http://localhost:3000";
+const appUrl = () => cfg("APP_URL") ?? "http://localhost:3000";
 
 export async function stripeCheckout(org: Org, email: string, plan: PlanId) {
   const customer = await ensureCustomer(org, email);

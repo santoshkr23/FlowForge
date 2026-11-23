@@ -3,6 +3,7 @@
  * Provider is chosen by AI_PROVIDER (default: whichever key is set).
  */
 import { apiCall } from "./engine/net";
+import { cfg } from "@/lib/config";
 
 export type ChatMsg =
   | { role: "user" | "assistant"; content: string }
@@ -14,11 +15,11 @@ export type ToolCall = { id: string; name: string; args: Record<string, unknown>
 export type ChatResult = { text: string; toolCalls: ToolCall[] };
 
 export function aiProvider(): "openai" | "anthropic" | null {
-  const p = process.env.AI_PROVIDER;
-  if (p === "anthropic" && process.env.ANTHROPIC_API_KEY) return "anthropic";
-  if (p === "openai" && process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  const p = cfg("AI_PROVIDER");
+  if (p === "anthropic" && cfg("ANTHROPIC_API_KEY")) return "anthropic";
+  if (p === "openai" && cfg("OPENAI_API_KEY")) return "openai";
+  if (cfg("OPENAI_API_KEY")) return "openai";
+  if (cfg("ANTHROPIC_API_KEY")) return "anthropic";
   return null;
 }
 
@@ -44,9 +45,9 @@ async function openai(o: Parameters<typeof chat>[0]): Promise<ChatResult> {
   type R = { choices: { message: { content: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] } }[] };
   const r = await apiCall<R>("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    headers: { authorization: `Bearer ${cfg("OPENAI_API_KEY")}` },
     json: {
-      model: o.model || process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model: o.model || cfg("OPENAI_MODEL") || "gpt-4o-mini",
       messages,
       max_tokens: o.maxTokens ?? 1500,
       ...(o.json ? { response_format: { type: "json_object" } } : {}),
@@ -79,9 +80,9 @@ async function anthropic(o: Parameters<typeof chat>[0]): Promise<ChatResult> {
   const system = (o.system ?? "") + (o.json ? "\nRespond with a single valid JSON object and nothing else." : "");
   const r = await apiCall<R>("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "x-api-key": process.env.ANTHROPIC_API_KEY ?? "", "anthropic-version": "2023-06-01" },
+    headers: { "x-api-key": cfg("ANTHROPIC_API_KEY") ?? "", "anthropic-version": "2023-06-01" },
     json: {
-      model: o.model || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5",
+      model: o.model || cfg("ANTHROPIC_MODEL") || "claude-sonnet-4-5",
       max_tokens: o.maxTokens ?? 1500,
       ...(system.trim() ? { system } : {}),
       messages,

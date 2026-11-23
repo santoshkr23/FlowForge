@@ -5,6 +5,10 @@ import { requireCtx } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { AdminOrgRow, AdminUserRow } from "@/components/app/AdminRows";
 import { PLANS } from "@/lib/plans";
+import { headers } from "next/headers";
+import { AdminSettings } from "@/components/app/AdminSettings";
+import { loadConfig, settingsView } from "@/lib/config";
+import { siteUrl } from "@/lib/oauth/providers";
 
 export const metadata = { title: "Admin" };
 export const dynamic = "force-dynamic";
@@ -13,6 +17,8 @@ export default async function Admin() {
   const ctx = await requireCtx();
   if (!ctx.isSuperAdmin) notFound();
   const since = new Date(Date.now() - 30 * 86400_000);
+  await loadConfig(true);
+  const site = siteUrl({ headers: await headers(), url: "http://localhost" });
 
   const [orgs, users, [rev], [runs], byPlan] = await Promise.all([
     db
@@ -91,6 +97,7 @@ export default async function Admin() {
           </tbody>
         </table>
       </div>
+          <AdminSettings initial={settingsView()} callbackUrl={`${site}/api/oauth/callback`} mcpUrl={`${site}/api/mcp`} />
     </main>
   );
 }

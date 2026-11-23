@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { requireCtx, hasRole } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { Builder } from "@/components/builder/Builder";
+import { cfg } from "@/lib/config";
 
 export const metadata = { title: "Edit workflow" };
 
@@ -27,7 +28,7 @@ export default async function EditWorkflow(props: { params: Promise<{ id: string
       .orderBy(desc(schema.executions.startedAt))
       .limit(1),
   ]);
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const appUrl = cfg("APP_URL") ?? "http://localhost:3000";
 
   return (
     <Builder

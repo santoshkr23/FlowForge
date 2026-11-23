@@ -6,7 +6,7 @@
  * "Authorization: Bearer ff_…" (an API key from API & MCP).
  */
 import { orgFromApiKey } from "@/lib/apikey";
-import { isSuperAdmin } from "@/lib/auth";
+import { isSuperAdmin, loadSiteOwner } from "@/lib/auth";
 import { planAllows } from "@/lib/plans";
 import { HttpError } from "@/lib/http";
 import { CORS, preflight } from "@/lib/cors";
@@ -29,6 +29,7 @@ async function principal(req: Request): Promise<McpPrincipal | null> {
   const token = h.startsWith("Bearer ") ? h.slice(7).trim() : "";
   if (token.startsWith("ffo_")) {
     const p = await principalFromAccessToken(token);
+    await loadSiteOwner();
     return p ? { org: p.org, userId: p.user.id, admin: isSuperAdmin(p.user.email), via: "oauth" } : null;
   }
   const org = await orgFromApiKey(req);

@@ -2,8 +2,9 @@
 import { apiCall, apiRaw } from "../engine/net";
 import { StepError } from "../engine/types";
 import type { Helpers } from "../engine/connections";
+import { cfg } from "@/lib/config";
 
-const headers = (token: string) => ({ authorization: `Bearer ${token}`, "linkedin-version": process.env.LINKEDIN_VERSION ?? "202608", "x-restli-protocol-version": "2.0.0" });
+const headers = (token: string) => ({ authorization: `Bearer ${token}`, "linkedin-version": cfg("LINKEDIN_VERSION") ?? "202608", "x-restli-protocol-version": "2.0.0" });
 
 /** Post link or URN → urn:li:activity|share|ugcPost:… */
 export function urnFromUrl(raw: string): string {

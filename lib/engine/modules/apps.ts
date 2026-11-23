@@ -4,6 +4,7 @@ import { resolveJsonField } from "../template";
 import { apiCall, httpRequest } from "../net";
 import { StepError, type ModuleRunner } from "../types";
 import { googleAccess } from "./google";
+import { cfg } from "@/lib/config";
 
 const s = (v: unknown) => (v == null ? "" : String(v));
 
@@ -17,15 +18,15 @@ export const apps: Record<string, ModuleRunner> = {
       transportOpts = { host: c.host, port, secure: port === 465, auth: { user: c.user, pass: c.pass } };
       from = c.from || c.user;
     } else {
-      if (!process.env.SMTP_HOST) throw new StepError("No SMTP connection selected and platform SMTP is not configured");
-      const port = Number(process.env.SMTP_PORT) || 587;
+      if (!cfg("SMTP_HOST")) throw new StepError("No SMTP connection selected and platform SMTP is not configured");
+      const port = Number(cfg("SMTP_PORT")) || 587;
       transportOpts = {
-        host: process.env.SMTP_HOST,
+        host: cfg("SMTP_HOST"),
         port,
         secure: port === 465,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        auth: { user: cfg("SMTP_USER"), pass: cfg("SMTP_PASS") },
       };
-      from = process.env.SMTP_FROM || "no-reply@example.com";
+      from = cfg("SMTP_FROM") || "no-reply@example.com";
     }
     const info = await nodemailer.createTransport(transportOpts).sendMail({
       from,

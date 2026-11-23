@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { stripe, handleStripeEvent } from "@/lib/billing/stripe";
+import { cfg } from "@/lib/config";
 
 /** Stripe → Developers → Webhooks → endpoint: {APP_URL}/api/billing/stripe/webhook */
 export async function POST(req: Request) {
@@ -7,7 +8,7 @@ export async function POST(req: Request) {
   const raw = await req.text();
   let event;
   try {
-    event = stripe().webhooks.constructEvent(raw, sig ?? "", process.env.STRIPE_WEBHOOK_SECRET ?? "");
+    event = stripe().webhooks.constructEvent(raw, sig ?? "", cfg("STRIPE_WEBHOOK_SECRET") ?? "");
   } catch (e) {
     return NextResponse.json({ error: `Invalid signature: ${(e as Error).message}` }, { status: 400 });
   }

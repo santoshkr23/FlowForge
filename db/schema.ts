@@ -342,3 +342,11 @@ export const mcpTokens = pgTable(
   },
   (t) => [uniqueIndex("mcp_tokens_access").on(t.accessHash), uniqueIndex("mcp_tokens_refresh").on(t.refreshHash), index("mcp_tokens_org").on(t.orgId)],
 );
+
+/** Site settings edited in /admin (API keys etc.). Values are encrypted with ENCRYPTION_KEY. */
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedBy: text("updated_by"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

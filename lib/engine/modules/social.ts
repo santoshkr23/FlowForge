@@ -2,6 +2,7 @@
 import { apiCall, apiRaw, httpRequest } from "../net";
 import { metaGraph } from "../../oauth/providers";
 import { StepError, type ModuleRunner, type RunCtx } from "../types";
+import { cfg } from "@/lib/config";
 
 const s = (v: unknown) => (v == null ? "" : String(v)).trim();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -145,7 +146,7 @@ export const social: Record<string, ModuleRunner> = {
       const u = await apiCall<{ sub: string }>("https://api.linkedin.com/v2/userinfo", { headers: { authorization: `Bearer ${accessToken}` } });
       author = `urn:li:person:${u.sub}`;
     }
-    const version = process.env.LINKEDIN_VERSION ?? "202608";
+    const version = cfg("LINKEDIN_VERSION") ?? "202608";
     try {
       const r = await apiRaw("https://api.linkedin.com/rest/posts", {
         method: "POST",

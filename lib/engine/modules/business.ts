@@ -6,6 +6,7 @@ import { resolveJsonField } from "../template";
 import { readFeed } from "../rss";
 import { normalizePgUrl } from "../../pg-url";
 import { StepError, type ModuleRunner } from "../types";
+import { cfg } from "@/lib/config";
 
 const s = (v: unknown) => (v == null ? "" : String(v)).trim();
 const list = (v: unknown) =>
@@ -28,7 +29,7 @@ const mustMatch = (value: string, re: RegExp, what: string) => {
 export type ShopifyConn = { shop: string; accessToken: string };
 export async function shopify<T>(c: ShopifyConn, path: string, init: RequestInit & { json?: unknown } = {}) {
   const shop = mustMatch(s(c.shop).replace(/^https?:\/\//, "").replace(/\/.*$/, ""), /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i, "Store domain");
-  const version = process.env.SHOPIFY_API_VERSION ?? "2026-07";
+  const version = cfg("SHOPIFY_API_VERSION") ?? "2026-07";
   return apiCall<T>(`https://${shop}/admin/api/${version}${path}`, { ...init, headers: { "x-shopify-access-token": c.accessToken, ...(init.headers ?? {}) } });
 }
 
@@ -61,7 +62,7 @@ export const business: Record<string, ModuleRunner> = {
             },
           }
         : { messaging_product: "whatsapp", to, type: "text", text: { body: s(config.text), preview_url: true } };
-    const v = process.env.META_GRAPH_VERSION ?? "v23.0";
+    const v = cfg("META_GRAPH_VERSION") ?? "v23.0";
     const r = await apiCall<{ messages: { id: string }[] }>(`https://graph.facebook.com/${v}/${s(c.phoneNumberId)}/messages`, {
       method: "POST",
       headers: bearer(c.accessToken),
